@@ -38,7 +38,7 @@ javascript:(function() {
             bladeTrails: [],
             angle: 0,
             do() {
-                if (b.activeGun !== undefined && input.fire && (tech.isEnergyHealth ? m.energy > 0.11 : m.health >= 0.11)) {
+                if (b.activeGun !== null && input.fire && (tech.isEnergyHealth ? m.energy > 0.11 : m.health >= 0.11)) {
                     if (!this.scythe && b.guns[b.activeGun].name === 'scythe') {
                         ({ scythe: this.scythe, bladeSegments: this.bladeSegments} = this.createAndSwingScythe());
                         this.angle = m.angle;
