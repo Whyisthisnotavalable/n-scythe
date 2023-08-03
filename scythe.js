@@ -24,6 +24,11 @@ javascript:(function() {
         fire() {}
     };
     b.guns.push(e);
+    const gunArray = b.guns.filter(
+    (obj, index, self) =>
+        index === self.findIndex((item) => item.name === obj.name)
+    );
+    b.guns = gunArray;
     function active() {
         simulation.ephemera.push({
             name: "scythe",
@@ -33,7 +38,7 @@ javascript:(function() {
             bladeTrails: [],
             angle: 0,
             do() {
-                if (b.activeGun == 12 && input.fire && m.health >= 0.11) {
+                if (b.guns[b.activeGun] === "scythe" && input.fire && m.health >= 0.11) {
                     if (!this.scythe) {
                         ({ scythe: this.scythe, bladeSegments: this.bladeSegments} = this.createAndSwingScythe());
                         this.angle = m.angle;
