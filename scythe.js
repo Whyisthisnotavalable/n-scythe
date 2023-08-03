@@ -201,4 +201,9 @@ javascript:(function() {
             },          
         })
     }
+    if(simulation !== undefined) {
+        console.log("%cscythe mod successfully installed", "color: crimson");
+    } else {
+        console.log("%cscythe mod install incomplete", "color: black")
+    }
 })();
