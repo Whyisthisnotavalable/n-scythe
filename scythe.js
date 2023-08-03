@@ -38,12 +38,16 @@ javascript:(function() {
             bladeTrails: [],
             angle: 0,
             do() {
-                if (b.guns[b.activeGun] === "scythe" && input.fire && m.health >= 0.11) {
-                    if (!this.scythe) {
+                if (b.activeGun !== undefined && input.fire && (tech.isEnergyHealth ? m.energy > 0.11 : m.health >= 0.11)) {
+                    if (!this.scythe && b.guns[b.activeGun].name === 'scythe') {
                         ({ scythe: this.scythe, bladeSegments: this.bladeSegments} = this.createAndSwingScythe());
                         this.angle = m.angle;
-                        m.health -= 0.1;
-                        m.displayHealth();
+                        if(tech.isEnergyHealth) {
+                            m.energy -= 0.1;
+                        } else {
+                            m.health -= 0.1;
+                            m.displayHealth();
+                        }
                     }
                 }
                 if(this.scythe && m.cycle > this.cycle + 30) {
