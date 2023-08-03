@@ -1,113 +1,195 @@
 javascript:(function() {
-
-const e = {name: atob("c2N5dGhl"),description: atob("VGhyb3cgYSA8c3Ryb25nIHN0eWxlPSdjb2xvcjogY3JpbXNvbjsnPiBzY3l0aGU8L3N0cm9uZz4gdGhhdCBzcGVlZHMgdXAgd2l0aCBjb2xsaXNpb25zPGJyPkRyYWlucyBhbGwgb2YgeW91ciA8c3Ryb25nIGNsYXNzPSdjb2xvci1mJz5lbmVyZ3k8L3N0cm9uZz4") ,ammo: 0,ammoPack: Infinity,have: false,do() {},fire() {}}; b.guns.push(e); 
-simulation.ephemera.push({
-    name: "ml",
-    cc: 0,
-    s: void 0,
-    bs: void 0,
-    bt: [],
-    angle: 0,
-    do() {
-        if (12 == b.activeGun && input.fire && m.energy == m.maxEnergy && (this.s || (({
-                s: this.s,
-                bs: this.bs
-            } = this.cs()), this.angle = m.angle, m.energy -= m.maxEnergy)), this.s && m.cycle > this.cc + 30 ? (Matter.Body.setAngularVelocity(this.s, 0), Composite.remove(engine.world, this.s), this.s.parts.forEach(e => {
-                Composite.remove(engine.world, e);
-                const t = body.indexOf(e); - 1 !== t && body.splice(t, 1)
-            }), this.s = void 0, this.bt = []) : this.s && (this.angle > -Math.PI / 2 && this.angle < Math.PI / 2 ? Matter.Body.setAngularVelocity(this.s, .15 * Math.PI) : Matter.Body.setAngularVelocity(this.s, .15 * -Math.PI), Matter.Body.setVelocity(this.s, {
-                x: 30 * Math.cos(this.angle),
-                y: 30 * Math.sin(this.angle)
-            })), this.s) {
-            for (let e = 0; e < this.bs.length; e++) {
-                const t = this.bs[e],
-                    s = this.bt[e] || [],
-                    o = t.vertices.map(e => ({
-                        x: e.x,
-                        y: e.y
-                    }));
-                s.push(o), s.length > 10 && s.shift(), this.bt[e] = s
-            }
-            for (let e = 0; e < this.bt.length; e++) {
-                const t = this.bt[e],
-                    s = 1 / t.length;
-                let o = 0;
-                for (let e = 0; e < t.length; e++) {
-                    const i = t[e];
-                    ctx.beginPath(), ctx.moveTo(i[0].x, i[0].y);
-                    for (let e = 1; e < i.length; e++) ctx.lineTo(i[e].x, i[e].y);
-                    o += s, ctx.closePath(), ctx.fillStyle = `rgba(220, 20, 60, ${o})`, ctx.fill()
-                }
-            }
-            for (let e = 0; e < this.bs.length; e++) {
-                ctx.beginPath(), ctx.lineJoin = "miter", ctx.miterLimit = 100, ctx.strokeStyle = "crimson", ctx.lineWidth = 5, ctx.fillStyle = "black", ctx.moveTo(this.bs[e].vertices[0].x, this.bs[e].vertices[0].y);
-                for (let t = 0; t < this.bs[e].vertices.length; t++) ctx.lineTo(this.bs[e].vertices[t].x, this.bs[e].vertices[t].y);
-                ctx.closePath(), ctx.stroke(), ctx.fill(), ctx.lineJoin = "round", ctx.miterLimit = 10
+    check();
+    function isScythePresent() {
+        for (let i = 0; i < simulation.ephemera.length; i++) {
+            if (simulation.ephemera[i].name === "scythe") {
+                return true; 
             }
         }
-        if (this.s)
-            for (let e = 0; e < mob.length; e++)
-                if (Matter.Query.collides(this.s, [mob[e]]).length > 0) {
-                    const t = .12 * m.dmgScale * 2.73;
-                    mob[e].damage(t, !0), simulation.drawList.push({
-                        x: mob[e].position.x,
-                        y: mob[e].position.y,
-                        radius: 50 * Math.sqrt(t),
-                        color: simulation.mobDmgColor,
-                        time: simulation.drawTime
-                    });
-                    const s = Math.atan2(mob[e].position.y - this.s.position.y, mob[e].position.x - this.s.position.x);
-                    this.s.force.x += 2 * Math.cos(s), this.s.force.y += 2 * Math.sin(s);
-                    break
-                }
-    },
-    cs(e = player.position.x, t = player.position.y, s = m.angle) {
-        if (this.cc < m.cycle) {
-            this.cc = m.cycle + 60;
-            const o = 20,
-                i = 200,
-                a = Bodies.rectangle(e, t, o, i, spawn.propsIsNotHoldable);
-            body[body.length] = a;
-            const l = 100,
-                n = 20,
-                c = 10,
-                h = 5.5,
-                r = [];
-            for (let s = 0; s < c; s++) {
-                const a = e - o / 2 + s * (l / 2) - s / (c - 1) * h * (l / 2),
-                    m = t + i / 2 - s * (n / 3 ** s),
-                    y = [{
-                        x: a,
-                        y: m - n / 2
-                    }, {
-                        x: a + l / 2,
-                        y: m + n / 2
-                    }, {
-                        x: a - l / 2,
-                        y: m + n / 2
-                    }, {
-                        x: a,
-                        y: m - n / 2 + 10
-                    }],
-                    d = Bodies.fromVertices(a, m, y, spawn.propsIsNotHoldable);
-                body[body.length] = d, Matter.Body.rotate(d, -Math.sin(s * (Math.PI / 180) * 5)), r.push(d)
-            }
-            const y = Body.create({
-                parts: [a, ...r]
-            });
-            return Composite.add(engine.world, y), Matter.Body.setPosition(y, {
-                x: e,
-                y: t
-            }), y.collisionFilter.category = cat.body, y.collisionFilter.mask = cat.mobBullet | cat.mob, s > -Math.PI / 2 && s < Math.PI / 2 && Body.scale(y, -1, 1, {
-                x: e,
-                y: t
-            }), y.frictionAir -= .01, {
-                s: y,
-                bs: r
-            }
-        }
+        return false; 
     }
-})
+    function check() {
+        if (!isScythePresent()) {
+            active();
+        }
+        requestAnimationFrame(check);
+    }
+    const e = {
+        name: atob("c2N5dGhl"),
+        description: `throw a <b style="color: ">scythe</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition`,
+        ammo: 0,
+        ammoPack: Infinity,
+        have: false,
+        do() {},
+        fire() {}
+    };
+    b.guns.push(e);
+    function active() {
+        simulation.ephemera.push({
+            name: "scythe",
+            cycle: 0,
+            scythe: undefined,
+            bladeSegments: undefined,
+            bladeTrails: [],
+            angle: 0,
+            do() {
+                if (b.activeGun == 12 && input.fire && m.health >= 0.11) {
+                    if (!this.scythe) {
+                        ({ scythe: this.scythe, bladeSegments: this.bladeSegments} = this.createAndSwingScythe());
+                        this.angle = m.angle;
+                        m.health -= 0.1;
+                        m.displayHealth();
+                    }
+                }
+                if(this.scythe && m.cycle > this.cycle + 30) {
+                    Matter.Body.setAngularVelocity(this.scythe, 0);
+                    Composite.remove(engine.world, this.scythe);
 
+                    this.scythe.parts.forEach(part => {
+                        Composite.remove(engine.world, part);
+                        const index = body.indexOf(part);
+                        if (index !== -1) {
+                            body.splice(index, 1);
+                        }
+                    });
 
+                    this.scythe = undefined;
+                    this.bladeTrails = [];
+                } else {
+                    if (this.scythe) {
+                        if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
+                            Matter.Body.setAngularVelocity(this.scythe, -Math.PI * 0.15);
+                        } else {
+                            Matter.Body.setAngularVelocity(this.scythe, Math.PI * 0.15);
+                        }
+                        Matter.Body.setVelocity(this.scythe, {
+                            x: Math.cos(this.angle) * 30,
+                            y: Math.sin(this.angle) * 30
+                        });
+                    }
+                }
+                if(this.scythe) {
+                    for (let i = 0; i < this.bladeSegments.length; i++) {
+                        const blade = this.bladeSegments[i];
+                        const trail = this.bladeTrails[i] || [];
+                        const vertices = blade.vertices.map(vertex => ({ x: vertex.x, y: vertex.y }));
+                        trail.push(vertices);
+                        if (trail.length > 10) {
+                            trail.shift();
+                        }
+                        this.bladeTrails[i] = trail;
+                    }
+        
+                    for (let i = 0; i < this.bladeTrails.length; i++) {
+                        const trail = this.bladeTrails[i];
+        
+                        const alphaStep = 1 / trail.length;
+                        let alpha = 0;
+        
+                        for (let j = 0; j < trail.length; j++) {
+                            const vertices = trail[j];
+                            ctx.beginPath();
+                            ctx.moveTo(vertices[0].x, vertices[0].y);
+        
+                            for (let k = 1; k < vertices.length; k++) {
+                                ctx.lineTo(vertices[k].x, vertices[k].y);
+                            };
+        
+                            alpha += alphaStep;
+                            ctx.closePath();
+                            ctx.fillStyle = `rgba(220, 20, 60, ${alpha})`;
+                            ctx.fill();
+                        }
+                    }
+
+                    for(let i = 0; i < this.bladeSegments.length; i++) {
+                        ctx.beginPath();
+                        ctx.lineJoin = "miter";
+                        ctx.miterLimit = 100;
+                        ctx.strokeStyle = "crimson";
+                        ctx.lineWidth = 5;
+                        ctx.fillStyle = "black";
+                        ctx.moveTo(this.bladeSegments[i].vertices[0].x, this.bladeSegments[i].vertices[0].y);
+                        for(let j = 0; j < this.bladeSegments[i].vertices.length; j++) {
+                            ctx.lineTo(this.bladeSegments[i].vertices[j].x, this.bladeSegments[i].vertices[j].y)
+                        };
+                        ctx.closePath();
+                        ctx.stroke();
+                        ctx.fill();
+                        ctx.lineJoin = "round";
+                        ctx.miterLimit = 10;
+                    }
+                }
+                if(this.scythe) {
+                    for (let i = 0; i < mob.length; i++) {
+                        if (Matter.Query.collides(this.scythe, [mob[i]]).length > 0) {
+                            const dmg = m.dmgScale * 0.12 * 2.73;
+                            mob[i].damage(dmg, true);
+                            simulation.drawList.push({
+                                x: mob[i].position.x,
+                                y: mob[i].position.y,
+                                radius: Math.sqrt(dmg) * 50,
+                                color: simulation.mobDmgColor,
+                                time: simulation.drawTime
+                            });
+                            const angle = Math.atan2(mob[i].position.y - this.scythe.position.y, mob[i].position.x - this.scythe.position.x);
+                            this.scythe.force.x += Math.cos(angle) * 2;
+                            this.scythe.force.y += Math.sin(angle) * 2;
+                            break
+                        }
+                    }
+                }
+            },
+            createAndSwingScythe(x = player.position.x, y = player.position.y, angle = m.angle) {
+                if (this.cycle < m.cycle) {
+                    this.cycle = m.cycle + 60;
+                    const handleWidth = 20;
+                    const handleHeight = 200;
+                    const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
+                    body[body.length] = handle;
+                    const bladeWidth = 100;
+                    const bladeHeight = 20;
+                    const numBlades = 10;
+                    const extensionFactor = 5.5;
+                    const bladeSegments = [];
+            
+                    for (let i = 0; i < numBlades; i++) {
+                        const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+                        const bladeX = x - handleWidth / 2 + i * (bladeWidth / 2) - extensionFactorFraction * (bladeWidth / 2);
+                        const bladeY = y + handleHeight / 2 - i * (bladeHeight / (3 ** i));
+            
+                        const vertices = [
+                            { x: bladeX, y: bladeY - bladeHeight / 2 }, 
+                            { x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                            { x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                            { x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
+                        ];
+            
+                        const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
+                        body[body.length] = blade;
+                        Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5));
+                        bladeSegments.push(blade);
+                    }
+            
+                    const scythe = Body.create({
+                        parts: [handle, ...bladeSegments],
+                    });
+            
+                    Composite.add(engine.world, scythe);
+                    Matter.Body.setPosition(scythe, { x, y });
+            
+                    scythe.collisionFilter.category = cat.body;
+                    scythe.collisionFilter.mask = cat.mobBullet | cat.mob;
+            
+                    if ((angle > -Math.PI / 2 && angle < Math.PI / 2)) {
+                        Body.scale(scythe, -1, 1, { x, y });
+                    }
+
+                    scythe.frictionAir -= 0.01;
+            
+                    return { scythe, bladeSegments };
+                }
+            },          
+        })
+    }
 })();
