@@ -29,6 +29,61 @@ javascript:(function() {
         index === self.findIndex((item) => item.name === obj.name)
     );
     b.guns = gunArray;
+
+    const t = [
+        {
+            name: "drawn out",
+            link: `<a target="_blank" href='https://en.wikipedia.org/wiki/Forging' class="link">drawn out</a>`,
+            descriptionFunction() {
+                return `Increases <strong>scythe</strong> blade length by 1<br>increase scythe <div class="color-d">damage</div> by 30%`
+            },
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe")
+            },
+            requires: "scythe",
+            effect() {
+                tech.isLongBlade = true;
+            },
+            remove() {
+                tech.isLongBlade = false;
+            }
+        },
+        {
+            name: "Ti-6Al-4V",
+            link: `<a target="_blank" href='https://en.wikipedia.org/wiki/Ti-6Al-4V' class="link">Ti-6Al-4V</a>`,
+            descriptionFunction() {
+                return `Increase <strong>scythe</strong> duration by 10%<br>increase scythe <div class="color-d">damage</div> by 15%`
+            },
+            isGunTech: true,
+            maxCount: 3,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe")
+            },
+            requires: "scythe",
+            effect() {
+                tech.scytheRange = this.count;
+            },
+            remove() {
+                tech.scytheRange = 0;
+            }
+        }
+    ];
+    for(let i = 0; i < tech.tech.length; i++) {
+        if(tech.tech[i].name === 'spherical harmonics') {
+            for(let j = 0; j < t.length; j++) {
+                tech.tech.splice(i, 0, t[j]);
+            }
+            break;
+        }
+    }
     function active() {
         simulation.ephemera.push({
             name: "scythe",
@@ -132,7 +187,7 @@ javascript:(function() {
                 if(this.scythe) {
                     for (let i = 0; i < mob.length; i++) {
                         if (Matter.Query.collides(this.scythe, [mob[i]]).length > 0) {
-                            const dmg = m.dmgScale * 0.12 * 2.73;
+                            const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : tech.scytheRange ? tech.scytheRange * 1.15 : 1);
                             mob[i].damage(dmg, true);
                             simulation.drawList.push({
                                 x: mob[i].position.x,
@@ -151,14 +206,14 @@ javascript:(function() {
             },
             createAndSwingScythe(x = player.position.x, y = player.position.y, angle = m.angle) {
                 if (this.cycle < m.cycle) {
-                    this.cycle = m.cycle + 60;
+                    this.cycle = m.cycle + 60 + (tech.scytheRange * 6);
                     const handleWidth = 20;
-                    const handleHeight = 200;
+                    const handleHeight = tech.isLongBlade ? 220 : 200;
                     const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
                     body[body.length] = handle;
                     const bladeWidth = 100;
                     const bladeHeight = 20;
-                    const numBlades = 10;
+                    const numBlades = tech.isLongBlade ? 11 : 10;
                     const extensionFactor = 5.5;
                     const bladeSegments = [];
             
