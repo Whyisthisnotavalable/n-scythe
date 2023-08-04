@@ -35,7 +35,7 @@ javascript:(function() {
             name: "drawn out",
             link: `<a target="_blank" href='https://en.wikipedia.org/wiki/Forging' class="link">drawn out</a>`,
             descriptionFunction() {
-                return `Increases <strong>scythe</strong> blade length by 1<br>increase scythe <strong class="color-d">damage</strong> by 30%`
+                return `Increases <strong>scythe</strong> blade length by 1<br>increase scythe <strong class="color-d">damage</strong> by <strong>30%</strong>`
             },
             isGunTech: true,
             maxCount: 1,
@@ -57,7 +57,7 @@ javascript:(function() {
             name: "Ti-6Al-4V",
             link: `<a target="_blank" href='https://en.wikipedia.org/wiki/Ti-6Al-4V' class="link">Ti-6Al-4V</a>`,
             descriptionFunction() {
-                return `Increase <strong>scythe</strong> duration by 10%<br>increase scythe <strong class="color-d">damage</strong> by 15%`
+                return `Increase <strong>scythe</strong> duration by 10%<br>increase scythe <strong class="color-d">damage</strong> by <strong>15%</strong>`
             },
             isGunTech: true,
             maxCount: 3,
