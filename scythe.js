@@ -84,6 +84,11 @@ javascript:(function() {
             break;
         }
     }
+    const techArray = tech.tech.filter(
+        (obj, index, self) =>
+            index === self.findIndex((item) => item.name === obj.name)
+        );
+    tech.tech = techArray;
     function active() {
         simulation.ephemera.push({
             name: "scythe",
