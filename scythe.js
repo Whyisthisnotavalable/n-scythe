@@ -78,7 +78,7 @@ javascript:(function() {
         {
             name: "duality",
             descriptionFunction() {
-                return `forge <strong>+1</strong> scythe blade<br><strong>-10%</strong> <strong class="color-d">damage<strong>`
+                return `forge <strong>+1</strong> scythe blade<br><strong>-10%</strong> <strong class="color-d">damage</strong>`
             },
             link: `<a target="_blank" href='https://en.wikipedia.org/wiki/Duality_(mathematics)' class="link">duality</a>`,
             isGunTech: true,
