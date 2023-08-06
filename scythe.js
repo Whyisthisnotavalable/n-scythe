@@ -76,6 +76,27 @@ javascript:(function() {
             }
         },
         {
+            name: "potential flow",
+            descriptionFunction() {
+                return `<strong>+0.3</strong> scythe <strong>rotation radians</strong><br><strong>+15%</strong> scythe <strong class="color-d">damage</strong>`
+            },
+            isGunTech: true,
+            maxCount: 3,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe")
+            },
+            requires: "scythe",
+            effect() {
+                tech.scytheRad = this.count;
+            },
+            remove() {
+                tech.scytheRad = 0;
+            }
+        },
+        {
             name: "duality",
             descriptionFunction() {
                 return `forge <strong>+1</strong> scythe blade<br><strong>-10%</strong> scythe <strong class="color-d">damage</strong>`
@@ -188,7 +209,16 @@ javascript:(function() {
         
                             alpha += alphaStep;
                             ctx.closePath();
-                            ctx.fillStyle = `rgba(220, 20, 60, ${alpha})`;
+                            if(tech.isEnergyHealth) {
+                                const eyeColor = m.fieldMeterColor;    
+                                const r = eyeColor[1];
+                                const g = eyeColor[2];
+                                const b = eyeColor[3];
+                                const color = `#${r}${r}${g}${g}${b}${b}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+                                ctx.fillStyle = color;
+                            } else {
+                                ctx.fillStyle = `rgba(220, 20, 60, ${alpha})`;
+                            }
                             ctx.fill();
                         }
                     }
@@ -197,7 +227,7 @@ javascript:(function() {
                         ctx.beginPath();
                         ctx.lineJoin = "miter";
                         ctx.miterLimit = 100;
-                        ctx.strokeStyle = "crimson";
+                        ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : "crimson";
                         ctx.lineWidth = 5;
                         ctx.fillStyle = "black";
                         ctx.moveTo(this.bladeSegments[i].vertices[0].x, this.bladeSegments[i].vertices[0].y);
