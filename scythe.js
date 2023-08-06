@@ -78,7 +78,7 @@ javascript:(function() {
         {
             name: "potential flow",
             descriptionFunction() {
-                return `<strong>+0.3</strong> scythe <strong>rotation radians</strong><br><strong>+15%</strong> scythe <strong class="color-d">damage</strong>`
+                return `<strong>+0.1</strong> scythe <strong>rotation radians</strong><br><strong>+15%</strong> scythe <strong class="color-d">damage</strong>`
             },
             isGunTech: true,
             maxCount: 3,
@@ -170,9 +170,9 @@ javascript:(function() {
                 } else {
                     if (this.scythe) {
                         if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
-                            Matter.Body.setAngularVelocity(this.scythe, -Math.PI * 0.15);
+                            Matter.Body.setAngularVelocity(this.scythe, -Math.PI * 0.15 - (tech.scytheRad ? tech.scytheRad * 0.1 : 0));
                         } else {
-                            Matter.Body.setAngularVelocity(this.scythe, Math.PI * 0.15);
+                            Matter.Body.setAngularVelocity(this.scythe, Math.PI * 0.15 + (tech.scytheRad ? tech.scytheRad * 0.1 : 0));
                         }
                         Matter.Body.setVelocity(this.scythe, {
                             x: Math.cos(this.angle) * 30,
@@ -244,7 +244,7 @@ javascript:(function() {
                 if(this.scythe) {
                     for (let i = 0; i < mob.length; i++) {
                         if (Matter.Query.collides(this.scythe, [mob[i]]).length > 0) {
-                            const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : 1) * (tech.scytheRange ? tech.scytheRange * 1.15 : 1) * (tech.isDoubleScythe ? 0.9 : 1);
+                            const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : 1) * (tech.scytheRange ? tech.scytheRange * 1.15 : 1) * (tech.isDoubleScythe ? 0.9 : 1) * (tech.scytheRad ? tech.scytheRad * 1.15 : 1);
                             mob[i].damage(dmg, true);
                             simulation.drawList.push({
                                 x: mob[i].position.x,
