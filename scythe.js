@@ -65,20 +65,22 @@ javascript:(function() {
             frequency: 2,
             frequencyDefault: 2,
             allowed() {
-                return tech.haveGunCheck("scythe")
+                return tech.haveGunCheck("scythe") && !tech.isPhaseScythe
             },
-            requires: "scythe",
+            requires: "scythe, not phase transition",
             effect() {
                 tech.scytheRange = this.count;
+                tech.isScytheRange = true;
             },
             remove() {
                 tech.scytheRange = 0;
+                tech.isScytheRange = false;
             }
         },
         {
             name: "potential flow",
             descriptionFunction() {
-                return `<strong>+0.1</strong> scythe <strong>rotation radians</strong><br><strong>+15%</strong> scythe <strong class="color-d">damage</strong>`
+                return `<strong>+0.1</strong> scythe <strong>rotation radians</strong><br><strong>+50%</strong> scythe <strong class="color-d">damage</strong>`
             },
             isGunTech: true,
             maxCount: 3,
@@ -118,7 +120,29 @@ javascript:(function() {
                 tech.isDoubleScythe = false;
             }
         },
+        {
+            name: "phase transition",
+            descriptionFunction() {
+                return `when scythe is <strong>active</strong> become <strong>invulnerable</strong><br>drain <strong class="color-f">energy</strong>`
+            },
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe") && !tech.isScytheRange && tech.isEnergyHealth
+            },
+            requires: "scythe, mass energy, not Ti-6Al-4V",
+            effect() {
+                tech.isPhaseScythe = true;
+            },
+            remove() {
+                tech.isPhaseScythe = false;
+            }
+        },
     ];
+    t.reverse();
     for(let i = 0; i < tech.tech.length; i++) {
         if(tech.tech[i].name === 'spherical harmonics') {
             for(let j = 0; j < t.length; j++) {
@@ -147,6 +171,9 @@ javascript:(function() {
                         this.angle = m.angle;
                         if(tech.isEnergyHealth) {
                             m.energy -= 0.1;
+                            if(tech.isPhaseScythe) {
+                                m.immuneCycle = this.cycle;
+                            }
                         } else {
                             m.health -= 0.1;
                             m.displayHealth();
@@ -244,7 +271,7 @@ javascript:(function() {
                 if(this.scythe) {
                     for (let i = 0; i < mob.length; i++) {
                         if (Matter.Query.collides(this.scythe, [mob[i]]).length > 0) {
-                            const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : 1) * (tech.scytheRange ? tech.scytheRange * 1.15 : 1) * (tech.isDoubleScythe ? 0.9 : 1) * (tech.scytheRad ? tech.scytheRad * 1.15 : 1);
+                            const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : 1) * (tech.scytheRange ? tech.scytheRange * 1.15 : 1) * (tech.isDoubleScythe ? 0.9 : 1) * (tech.scytheRad ? tech.scytheRad * 1.5 : 1);
                             mob[i].damage(dmg, true);
                             simulation.drawList.push({
                                 x: mob[i].position.x,
