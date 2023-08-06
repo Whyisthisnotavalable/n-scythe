@@ -60,7 +60,7 @@ javascript:(function() {
                 return `<strong>+10%</strong> scythe <strong>range</strong><br><strong>+15%</strong> scythe <strong class="color-d">damage</strong>`
             },
             isGunTech: true,
-            maxCount: 3,
+            maxCount: 9,
             count: 0,
             frequency: 2,
             frequencyDefault: 2,
@@ -74,7 +74,29 @@ javascript:(function() {
             remove() {
                 tech.scytheRange = 0;
             }
-        }
+        },
+        {
+            name: "duality",
+            descriptionFunction() {
+                return `forge <strong>+1</strong> scythe blade<br><strong>-10%</strong> <strong class="color-d">damage<strong>`
+            },
+            link: `<a target="_blank" href='https://en.wikipedia.org/wiki/Duality_(mathematics)' class="link">duality</a>`,
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe")
+            },
+            requires: "scythe",
+            effect() {
+                tech.isDoubleScythe = true;
+            },
+            remove() {
+                tech.isDoubleScythe = false;
+            }
+        },
     ];
     for(let i = 0; i < tech.tech.length; i++) {
         if(tech.tech[i].name === 'spherical harmonics') {
@@ -192,7 +214,7 @@ javascript:(function() {
                 if(this.scythe) {
                     for (let i = 0; i < mob.length; i++) {
                         if (Matter.Query.collides(this.scythe, [mob[i]]).length > 0) {
-                            const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : tech.scytheRange ? tech.scytheRange * 1.15 : 1);
+                            const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : 1) * (tech.scytheRange ? tech.scytheRange * 1.15 : 1) * (tech.isDoubleScythe ? 0.9 : 1);
                             mob[i].damage(dmg, true);
                             simulation.drawList.push({
                                 x: mob[i].position.x,
@@ -221,25 +243,61 @@ javascript:(function() {
                     const numBlades = tech.isLongBlade ? 11 : 10;
                     const extensionFactor = 5.5;
                     const bladeSegments = [];
-            
-                    for (let i = 0; i < numBlades; i++) {
-                        const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
-                        const bladeX = x - handleWidth / 2 + i * (bladeWidth / 2) - extensionFactorFraction * (bladeWidth / 2);
-                        const bladeY = y + handleHeight / 2 - i * (bladeHeight / (3 ** i));
-            
-                        const vertices = [
-                            { x: bladeX, y: bladeY - bladeHeight / 2 }, 
-                            { x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
-                            { x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
-                            { x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
-                        ];
-            
-                        const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
-                        body[body.length] = blade;
-                        Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5));
-                        bladeSegments.push(blade);
+                    if(!tech.isDoubleScythe) {
+                        for (let i = 0; i < numBlades; i++) {
+                            const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+                            const bladeX = x - handleWidth / 2 + i * (bladeWidth / 2) - extensionFactorFraction * (bladeWidth / 2);
+                            const bladeY = y + handleHeight / 2 - i * (bladeHeight / (3 ** i));
+                
+                            const vertices = [
+                                { x: bladeX, y: bladeY - bladeHeight / 2 }, 
+                                { x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                                { x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                                { x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
+                            ];
+                
+                            const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
+                            body[body.length] = blade;
+                            Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5));
+                            bladeSegments.push(blade);
+                        }
+                    } else {
+                        for (let i = 0; i < numBlades; i++) {
+                            const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+                            const bladeX = x - handleWidth / 2 + i * (bladeWidth / 2) - extensionFactorFraction * (bladeWidth / 2);
+                            const bladeY = y + handleHeight / 2 - i * (bladeHeight / (3 ** i));
+                
+                            const vertices = [
+                                { x: bladeX, y: bladeY - bladeHeight / 2 }, 
+                                { x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                                { x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                                { x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
+                            ];
+                
+                            const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
+                            body[body.length] = blade;
+                            Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5));
+                            bladeSegments.push(blade);
+                        }
+
+                        for (let i = 0; i < numBlades; i++) {
+                            const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+                            const bladeX = x + handleWidth / 2 - i * (bladeWidth / 2) + extensionFactorFraction * (bladeWidth / 2);
+                            const bladeY = y - handleHeight / 2 - i * (bladeHeight / (3 ** i));
+                
+                            const vertices = [
+                                { x: bladeX, y: bladeY - bladeHeight / 2 }, 
+                                { x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                                { x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+                                { x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
+                            ];
+                
+                            const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
+                            body[body.length] = blade;
+                            Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5) + Math.PI);
+                            bladeSegments.push(blade);
+                        }
                     }
-            
                     const scythe = Body.create({
                         parts: [handle, ...bladeSegments],
                     });
