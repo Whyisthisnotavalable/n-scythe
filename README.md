@@ -5,3 +5,7 @@
 Use that as a bookmarklet
 
 Join https://discord.gg/Q8gY4WeUcm (Community n-gon discord server)
+
+## n-ai
+
+Another random mod by me
