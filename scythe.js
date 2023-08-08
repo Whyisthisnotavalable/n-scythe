@@ -89,13 +89,15 @@ javascript:(function() {
             frequency: 2,
             frequencyDefault: 2,
             allowed() {
-                return tech.haveGunCheck("scythe")
+                return tech.haveGunCheck("scythe") && !tech.isMeleeScythe
             },
-            requires: "scythe",
+            requires: "scythe, not reaping",
             effect() {
+                tech.isScytheRad = true;
                 tech.scytheRad = this.count;
             },
             remove() {
+                tech.isScytheRad = false;
                 tech.scytheRad = 0;
             }
         },
@@ -189,7 +191,7 @@ javascript:(function() {
             frequency: 2,
             frequencyDefault: 2,
             allowed() {
-                return tech.haveGunCheck("scythe") && tech.isDoubleScythe && !tech.scytheRad
+                return tech.haveGunCheck("scythe") && tech.isDoubleScythe && !tech.isScytheRad
             },
             requires: "scythe, duality",
             effect() {
@@ -197,6 +199,27 @@ javascript:(function() {
             },
             remove() {
                 tech.isMeleeScythe = false;
+            }
+        },
+        {
+            name: "neurotoxin",
+            descriptionFunction() {
+                return `scythe <strong>stuns</strong> mobs for 1.5 seconds<br><strong style="color: indigo;">-0.1</strong> scythe <strong style="color: indigo;">rotation radians</strong>`
+            },
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe") && tech.isDoubleScythe && tech.isMeleeScythe
+            },
+            requires: "scythe, reaping",
+            effect() {
+                tech.isStunScythe = true;
+            },
+            remove() {
+                tech.isStunScythe = false;
             }
         },
     ];
@@ -271,9 +294,9 @@ javascript:(function() {
                         });
                     } else if(this.scythe && tech.isMeleeScythe) {
                         if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
-                            Matter.Body.setAngularVelocity(this.scythe, -Math.PI * 0.1);
+                            Matter.Body.setAngularVelocity(this.scythe, -Math.PI * 0.1 + (tech.isStunScythe ? 0.1 : 0));
                         } else {
-                            Matter.Body.setAngularVelocity(this.scythe, Math.PI * 0.1);
+                            Matter.Body.setAngularVelocity(this.scythe, Math.PI * 0.1 - (tech.isStunScythe ? 0.1 : 0));
                         }
                         /* if(!this.constraint) {
                             this.constraint = Constraint.create({
@@ -365,6 +388,9 @@ javascript:(function() {
                                 const angle = Math.atan2(mob[i].position.y - this.scythe.position.y, mob[i].position.x - this.scythe.position.x);
                                 this.scythe.force.x += Math.cos(angle) * 2;
                                 this.scythe.force.y += Math.sin(angle) * 2;
+                            }
+                            if(tech.isStunScythe) {
+                                mobs.statusStun(mob[i], 90);
                             }
                             break
                         }
