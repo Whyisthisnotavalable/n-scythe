@@ -36,7 +36,7 @@ javascript:(function() {
             name: "drawn out",
             link: `<a target="_blank" href='https://en.wikipedia.org/wiki/Forging' class="link">drawn out</a>`,
             descriptionFunction() {
-                return `<strong>+1</strong> scythe blade<br><strong>+30%</strong> scythe <strong class="color-d">damage</strong>`
+                return `<strong>+1</strong> scythe blade parts<br><strong>+30%</strong> scythe <strong class="color-d">damage</strong>`
             },
             isGunTech: true,
             maxCount: 1,
@@ -178,6 +178,27 @@ javascript:(function() {
                 }
             }
         },
+        {
+            name: "reaping",
+            descriptionFunction() {
+                return `<strong>+2</strong> scythe blades and <strong>+70%</strong> handle length<br>scythe is now used as a <b style="color: crimson;">melee</b>`
+            },
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe") && tech.isDoubleScythe && !tech.scytheRad
+            },
+            requires: "scythe, duality",
+            effect() {
+                tech.isMeleeScythe = true;
+            },
+            remove() {
+                tech.isMeleeScythe = false;
+            }
+        },
     ];
     t.reverse();
     for(let i = 0; i < tech.tech.length; i++) {
@@ -201,6 +222,7 @@ javascript:(function() {
             bladeSegments: undefined,
             bladeTrails: [],
             angle: 0,
+            constraint: undefined,
             do() {
                 if (b.activeGun !== null && input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
                     if (!this.scythe && b.guns[b.activeGun].name === 'scythe') {
@@ -224,16 +246,20 @@ javascript:(function() {
                     Composite.remove(engine.world, this.scythe);
                     this.scythe.parts.forEach(part => {
                         Composite.remove(engine.world, part);
-                        const index = body.indexOf(part);
+                        const index = bullet.indexOf(part);
                         if (index !== -1) {
-                            body.splice(index, 1);
+                            bullet.splice(index, 1);
                         }
                     });
                     this.scythe = undefined;
                     this.bladeTrails = [];
                     m.fireCDcycle = 0;
+                    /* if(tech.isMeleeScythe || this.constraint) {
+                        Composite.remove(engine.world, this.constraint);
+                        this.constraint = undefined;
+                    } */
                 } else {
-                    if (this.scythe) {
+                    if (this.scythe && !tech.isMeleeScythe) {
                         if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
                             Matter.Body.setAngularVelocity(this.scythe, -Math.PI * 0.15 - (tech.scytheRad ? tech.scytheRad * 0.1 : 0));
                         } else {
@@ -243,6 +269,22 @@ javascript:(function() {
                             x: Math.cos(this.angle) * 30,
                             y: Math.sin(this.angle) * 30
                         });
+                    } else if(this.scythe && tech.isMeleeScythe) {
+                        if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
+                            Matter.Body.setAngularVelocity(this.scythe, -Math.PI * 0.1);
+                        } else {
+                            Matter.Body.setAngularVelocity(this.scythe, Math.PI * 0.1);
+                        }
+                        /* if(!this.constraint) {
+                            this.constraint = Constraint.create({
+                                bodyA: player,
+                                bodyB: this.scythe,
+                                stiffness: 1,
+                                damping: 0.001
+                            });
+                            Composite.add(engine.world, this.constraint);
+                        } */
+                        Matter.Body.setPosition(this.scythe, player.position);
                     }
                 }
                 if(this.scythe) {
@@ -281,18 +323,19 @@ javascript:(function() {
                                 const b = eyeColor[3];
                                 const color = `#${r}${r}${g}${g}${b}${b}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
                                 ctx.fillStyle = color;
+                            } else if (tech.isAmmoScythe) {
+                                ctx.fillStyle = `#c0c0c0${Math.round(alpha * 255).toString(16).padStart(2, '0')}`
                             } else {
                                 ctx.fillStyle = `rgba(220, 20, 60, ${alpha})`;
                             }
                             ctx.fill();
                         }
                     }
-
                     for(let i = 0; i < this.bladeSegments.length; i++) {
                         ctx.beginPath();
                         ctx.lineJoin = "miter";
                         ctx.miterLimit = 100;
-                        ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : "crimson";
+                        ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : tech.isAmmoScythe ? "#c0c0c0" : "crimson";
                         ctx.lineWidth = 5;
                         ctx.fillStyle = "black";
                         ctx.moveTo(this.bladeSegments[i].vertices[0].x, this.bladeSegments[i].vertices[0].y);
@@ -318,9 +361,11 @@ javascript:(function() {
                                 color: simulation.mobDmgColor,
                                 time: simulation.drawTime
                             });
-                            const angle = Math.atan2(mob[i].position.y - this.scythe.position.y, mob[i].position.x - this.scythe.position.x);
-                            this.scythe.force.x += Math.cos(angle) * 2;
-                            this.scythe.force.y += Math.sin(angle) * 2;
+                            if(!tech.isMeleeScythe) {
+                                const angle = Math.atan2(mob[i].position.y - this.scythe.position.y, mob[i].position.x - this.scythe.position.x);
+                                this.scythe.force.x += Math.cos(angle) * 2;
+                                this.scythe.force.y += Math.sin(angle) * 2;
+                            }
                             break
                         }
                     }
@@ -331,12 +376,13 @@ javascript:(function() {
                     this.cycle = m.cycle + 60 + (tech.scytheRange * 6);
                     m.fireCDcycle = Infinity;
                     const handleWidth = 20;
-                    const handleHeight = tech.isLongBlade ? 220 : 200;
+                    const handleHeight = 200 + (tech.isLongBlade ? 30 : 0) + (tech.isMeleeScythe ? 140 : 0);
                     const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
-                    body[body.length] = handle;
+                    bullet[bullet.length] = handle;
+                    bullet[bullet.length - 1].do = () => {};
                     const bladeWidth = 100;
                     const bladeHeight = 20;
-                    const numBlades = tech.isLongBlade ? 11 : 10;
+                    const numBlades = 10 + (tech.isLongBlade ? 1 : 0) + (tech.isMeleeScythe ? 2 : 0);
                     const extensionFactor = 5.5;
                     const bladeSegments = [];
                     if(!tech.isDoubleScythe) {
@@ -353,7 +399,8 @@ javascript:(function() {
                             ];
                 
                             const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
-                            body[body.length] = blade;
+                            bullet[bullet.length] = blade;
+                            bullet[bullet.length - 1].do = () => {};
                             Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5));
                             bladeSegments.push(blade);
                         }
@@ -371,7 +418,8 @@ javascript:(function() {
                             ];
                 
                             const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
-                            body[body.length] = blade;
+                            bullet[bullet.length] = blade;
+                            bullet[bullet.length - 1].do = () => {};
                             Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5));
                             bladeSegments.push(blade);
                         }
@@ -389,7 +437,8 @@ javascript:(function() {
                             ];
                 
                             const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
-                            body[body.length] = blade;
+                            bullet[bullet.length] = blade;
+                            bullet[bullet.length - 1].do = () => {};
                             Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 180) * 5) + Math.PI);
                             bladeSegments.push(blade);
                         }
@@ -401,7 +450,7 @@ javascript:(function() {
                     Composite.add(engine.world, scythe);
                     Matter.Body.setPosition(scythe, { x, y });
             
-                    scythe.collisionFilter.category = cat.body;
+                    scythe.collisionFilter.category = cat.bullet;
                     scythe.collisionFilter.mask = cat.mobBullet | cat.mob;
             
                     if ((angle > -Math.PI / 2 && angle < Math.PI / 2)) {
