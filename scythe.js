@@ -16,9 +16,10 @@ javascript:(function() {
     }
     const e = {
         name: atob("c2N5dGhl"),
-        description: `throw a <b style="color: ">scythe</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition`,
+        description: `throw a <b>scythe</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition`,
         ammo: 0,
         ammoPack: Infinity,
+        defaultAmmoPack: 15,
         have: false,
         do() {},
         fire() {}
@@ -80,7 +81,7 @@ javascript:(function() {
         {
             name: "potential flow",
             descriptionFunction() {
-                return `<strong>+0.1</strong> scythe <strong>rotation radians</strong><br><strong>+50%</strong> scythe <strong class="color-d">damage</strong>`
+                return `<strong style="color: indigo;">+0.1</strong> scythe <strong style="color: indigo;">rotation radians</strong><br><strong>+50%</strong> scythe <strong class="color-d">damage</strong>`
             },
             isGunTech: true,
             maxCount: 3,
@@ -141,6 +142,42 @@ javascript:(function() {
                 tech.isPhaseScythe = false;
             }
         },
+        {
+            name: "titanium nitride",
+            descriptionFunction() {
+                return `scythe now uses <b>ammo</b> instead of <strong class="color-h">health</strong><br><strong>+24%</strong> <strong class='color-junk'>JUNK</strong> to <strong class='color-m'>tech</strong> pool`
+            },
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("scythe") && tech.isScytheRange
+            },
+            requires: "scythe, Ti-6Al-4V",
+            effect() {
+                tech.isAmmoScythe = true;
+                b.guns[12].ammoPack = b.guns[12].defaultAmmoPack;
+                b.guns[12].ammo = b.guns[12].defaultAmmoPack;
+                simulation.updateGunHUD();
+                this.refundAmount += tech.addJunkTechToPool(0.24);
+            },
+            refundAmount: 0,
+            remove() {
+                if (tech.isAmmoScythe) {
+                    tech.isAmmoScythe = false;
+                    b.guns[12].ammoPack = Infinity;
+                    b.guns[12].ammo = Infinity;
+                    simulation.updateGunHUD();
+                }
+                tech.isAmmoScythe = false;
+                if (this.count > 0 && this.refundAmount > 0) {
+                    tech.removeJunkTechFromPool(this.refundAmount);
+                    this.refundAmount = 0;
+                }
+            }
+        },
     ];
     t.reverse();
     for(let i = 0; i < tech.tech.length; i++) {
@@ -165,25 +202,26 @@ javascript:(function() {
             bladeTrails: [],
             angle: 0,
             do() {
-                if (b.activeGun !== null && input.fire && (tech.isEnergyHealth ? m.energy > 0.11 : m.health >= 0.11)) {
+                if (b.activeGun !== null && input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
                     if (!this.scythe && b.guns[b.activeGun].name === 'scythe') {
                         ({ scythe: this.scythe, bladeSegments: this.bladeSegments} = this.createAndSwingScythe());
                         this.angle = m.angle;
-                        if(tech.isEnergyHealth) {
-                            m.energy -= 0.1;
-                            if(tech.isPhaseScythe) {
-                                m.immuneCycle = this.cycle;
+                        if(!tech.isAmmoScythe && !b.guns[b.activeGun].ammo == 0) {
+                            if(tech.isEnergyHealth) {
+                                m.energy -= 0.1;
+                                if(tech.isPhaseScythe) {
+                                    m.immuneCycle = this.cycle;
+                                }
+                            } else {
+                                m.health -= 0.1;
+                                m.displayHealth();
                             }
-                        } else {
-                            m.health -= 0.1;
-                            m.displayHealth();
                         }
                     }
                 }
                 if(this.scythe && m.cycle > this.cycle + 30) {
                     Matter.Body.setAngularVelocity(this.scythe, 0);
                     Composite.remove(engine.world, this.scythe);
-
                     this.scythe.parts.forEach(part => {
                         Composite.remove(engine.world, part);
                         const index = body.indexOf(part);
@@ -191,9 +229,9 @@ javascript:(function() {
                             body.splice(index, 1);
                         }
                     });
-
                     this.scythe = undefined;
                     this.bladeTrails = [];
+                    m.fireCDcycle = 0;
                 } else {
                     if (this.scythe) {
                         if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
@@ -291,6 +329,7 @@ javascript:(function() {
             createAndSwingScythe(x = player.position.x, y = player.position.y, angle = m.angle) {
                 if (this.cycle < m.cycle) {
                     this.cycle = m.cycle + 60 + (tech.scytheRange * 6);
+                    m.fireCDcycle = Infinity;
                     const handleWidth = 20;
                     const handleHeight = tech.isLongBlade ? 220 : 200;
                     const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
@@ -376,9 +415,5 @@ javascript:(function() {
             },          
         })
     }
-    if(simulation !== undefined) {
-        console.log("%cscythe mod successfully installed", "color: crimson");
-    } else {
-        console.log("%cscythe mod install incomplete", "color: black")
-    }
+    console.log("%cscythe mod successfully installed", "color: crimson");
 })();
