@@ -21,6 +21,7 @@ javascript:(function() {
         ammoPack: Infinity,
         defaultAmmoPack: 15,
         have: false,
+        descriptionFunction() {},
         do() {},
         fire() {}
     };
