@@ -16,7 +16,7 @@ javascript:(function() {
     }
     const e = {
         name: atob("c2N5dGhl"),
-        description: `throw a <b>scythe</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition`,
+        description: `throw a <b>scythe</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition<br><strong>${this.ammoPack.toFixed(0)}</strong> nails per ${powerUps.orb.ammo()}`,
         ammo: 0,
         ammoPack: Infinity,
         defaultAmmoPack: 15,
