@@ -16,12 +16,13 @@ javascript:(function() {
     }
     const e = {
         name: atob("c2N5dGhl"),
-        description: `throw a <b>scythe</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition<br>Drains 10 <strong class='color-h'>health</strong>`,
         ammo: 0,
         ammoPack: Infinity,
         defaultAmmoPack: 15,
         have: false,
-        descriptionFunction() {},
+        descriptionFunction() {
+            return `throw a <b>scythe</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition<br>Drains 10 <strong class='color-h'>health</strong>`
+        },
         do() {},
         fire() {}
     };
