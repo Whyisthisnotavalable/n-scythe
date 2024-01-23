@@ -21,7 +21,19 @@ javascript:(function() {
 		ammoPack: Infinity,
 		defaultAmmoPack: Infinity,
 		have: false,
-		do() {},
+		do() {
+			if(input.fire) {
+				if(tech.isEnergyHealth) {
+					m.energy -= 0.001;
+					if(tech.isPhaseSword) {
+						m.immuneCycle = this.cycle;
+					}
+				} else {
+					m.health -= 0.001;
+					m.displayHealth();
+				}
+			}
+		},
 		fire() {}
 	};
 	b.guns.push(e);
@@ -82,18 +94,10 @@ javascript:(function() {
 					if (!this.sword && b.guns[b.activeGun].name === 'sword') {
 						({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
 						this.angle = m.angle;
-						if(tech.isEnergyHealth) {
-							m.energy -= 0.1;
-							if(tech.isPhaseSword) {
-								m.immuneCycle = this.cycle;
-							}
-						} else {
-							m.health -= 0.1;
-							m.displayHealth();
-						}
 					}
 				}
-				if(this.sword && m.cycle > this.cycle + 60) {
+				if(this.sword && !input.fire) {
+					this.cycle = 0;
 					Matter.Body.setAngularVelocity(this.sword, 0);
 					Matter.Body.setMass(player, 5)
 					Composite.remove(engine.world, this.sword);
@@ -231,7 +235,7 @@ javascript:(function() {
 			},
 			createAndSwingSword(x = player.position.x, y = player.position.y, angle = m.angle) {
 				if (this.cycle < m.cycle) {
-					this.cycle = m.cycle + 60;
+					this.cycle = Infinity;
 					m.fireCDcycle = Infinity;
 					const handleWidth = 20;
 					const handleHeight = 150;
