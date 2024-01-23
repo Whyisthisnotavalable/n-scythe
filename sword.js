@@ -16,10 +16,10 @@ javascript:(function() {
 	}
 	const e = {
 		name: "sword",
-		descriptionFunction() { return `throw a <b>sword</b> that keeps velocity upon collisions<br>drains <strong class='color-h'>health</strong> instead of ammunition<br>doesn't use <b>ammo</b>`},
-		ammo: 0,
+		descriptionFunction() { return `swing a <b>sword</b> that can cut through multiple mobs<br>drains health instead of ammunition<br>doesn't use <b>ammo</b>`},
+		ammo: Infinity,
 		ammoPack: Infinity,
-		defaultAmmoPack: 15,
+		defaultAmmoPack: Infinity,
 		have: false,
 		do() {},
 		fire() {}
@@ -54,20 +54,20 @@ javascript:(function() {
 			}
 		},
 	];
-	t.reverse();
-	for(let i = 0; i < tech.tech.length; i++) {
-		if(tech.tech[i].name === 'spherical harmonics') {
-			for(let j = 0; j < t.length; j++) {
-				tech.tech.splice(i, 0, t[j]);
-			}
-			break;
-		}
-	}
-	const techArray = tech.tech.filter(
-		(obj, index, self) =>
-			index === self.findIndex((item) => item.name === obj.name)
-		);
-	tech.tech = techArray;
+	// t.reverse();
+	// for(let i = 0; i < tech.tech.length; i++) {
+		// if(tech.tech[i].name === 'spherical harmonics') {
+			// for(let j = 0; j < t.length; j++) {
+				// tech.tech.splice(i, 0, t[j]);
+			// }
+			// break;
+		// }
+	// }
+	// const techArray = tech.tech.filter(
+		// (obj, index, self) =>
+			// index === self.findIndex((item) => item.name === obj.name)
+		// );
+	// tech.tech = techArray;
 	function active2() {
 		simulation.ephemera.push({
 			name: "sword",
@@ -93,7 +93,7 @@ javascript:(function() {
 						}
 					}
 				}
-				if(this.sword && m.cycle > this.cycle + 30) {
+				if(this.sword && m.cycle > this.cycle + 60) {
 					Matter.Body.setAngularVelocity(this.sword, 0);
 					Matter.Body.setMass(player, 5)
 					Composite.remove(engine.world, this.sword);
@@ -113,29 +113,40 @@ javascript:(function() {
 					m.fireCDcycle = 0;
 				} else {
 					if (this.sword) {
-						Matter.Body.setMass(player, 1000)
-						// let handle;
-						// for(let i = 0; i < bullet.length; i++) {
-							// if(bullet[i].customName == "handle") {
-								 // handle = bullet[i];
-							// }
-						// }
+						Matter.Body.setMass(player, 1000);
+						let handle;
+						for(let i = 0; i < bullet.length; i++) {
+							if(bullet[i].customName == "handle") {
+								 handle = bullet[i];
+							}
+						}
 						if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
 							Matter.Body.setAngularVelocity(this.sword, -Math.PI * 0.1);
 						} else {
 							Matter.Body.setAngularVelocity(this.sword, Math.PI * 0.1);
 						}
-						if(!this.constraint) {
+						if(!this.constraint && (m.angle > -Math.PI / 2 && m.angle < Math.PI / 2)) {
 							this.constraint = Constraint.create({
 								bodyA: player,
 								bodyB: this.sword,
-								pointB: {x: -10, y: 100},
-								// stiffness: 1,
+								pointB: {x: -9, y: ((handle.position.y - this.sword.position.y))},
+								stiffness: 0.1,
+								damping: 0.0001815,
+								length: 0,
+								
+							});
+							Composite.add(engine.world, this.constraint);
+						} else if(!this.constraint) {
+							this.constraint = Constraint.create({
+								bodyA: player,
+								bodyB: this.sword,
+								pointB: {x: 9, y: ((handle.position.y - this.sword.position.y))},
+								stiffness: 0.1,
 								damping: 0.0001815,
 								length: 0,
 							});
 							Composite.add(engine.world, this.constraint);
-						} 
+						}
 					}
 				}
 				if(this.sword) {
@@ -201,7 +212,7 @@ javascript:(function() {
 				if(this.sword) {
 					for (let i = 0; i < mob.length; i++) {
 						if (Matter.Query.collides(this.sword, [mob[i]]).length > 0) {
-							const dmg = m.dmgScale * 0.12 * 2.73;
+							const dmg = m.dmgScale * 2.73;
 							mob[i].damage(dmg, true);
 							simulation.drawList.push({
 								x: mob[i].position.x,
@@ -211,8 +222,8 @@ javascript:(function() {
 								time: simulation.drawTime
 							});
 							const angle = Math.atan2(mob[i].position.y - this.sword.position.y, mob[i].position.x - this.sword.position.x);
-							this.sword.force.x += Math.cos(angle) * 2;
-							this.sword.force.y += Math.sin(angle) * 2;
+							this.sword.force.x -= Math.cos(angle) * 20;
+							this.sword.force.y -= Math.sin(angle) * 20;
 							break
 						}
 					}
@@ -223,33 +234,52 @@ javascript:(function() {
 					this.cycle = m.cycle + 60;
 					m.fireCDcycle = Infinity;
 					const handleWidth = 20;
-					const handleHeight = 200;
+					const handleHeight = 150;
 					const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
 					bullet[bullet.length] = handle;
-					// handle.customName = "handle";
+					handle.customName = "handle";
 					bullet[bullet.length - 1].do = () => {};
 					const bladeWidth = 100;
 					const bladeHeight = 20;
-					const numBlades = 10;
-					const extensionFactor = 5.5;
+					const numBlades = 15;
+					const extensionFactor = 5;
 					const bladeSegments = [];
-					for (let i = 0; i < numBlades; i++) {
-						const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
-						const bladeX = x + i * (bladeWidth / 20);
-						const bladeY = y - handleHeight / 2 - i * (bladeHeight / 4.5) * extensionFactor;
-			
-						const vertices = [
-							{ x: bladeX, y: bladeY - bladeHeight / 2 }, 
-							{ x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
-							{ x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
-							{ x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
-						];
-			
-						const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
-						bullet[bullet.length] = blade;
-						bullet[bullet.length - 1].do = () => {};
-						Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 270) * 15));
-						bladeSegments.push(blade);
+					if ((angle > -Math.PI / 2 && angle < Math.PI / 2)) {
+						for (let i = 0; i < numBlades; i++) {
+							const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+							const bladeX = x + i * (bladeWidth / 20);
+							const bladeY = y - handleHeight / 2 - i * (bladeHeight / 4.5) * extensionFactor;
+				
+							const vertices = [
+								{ x: bladeX, y: bladeY - bladeHeight / 2 }, 
+								{ x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+								{ x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+								{ x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
+							];
+				
+							const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
+							bullet[bullet.length] = blade;
+							bullet[bullet.length - 1].do = () => {};
+							Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 270) * 15));
+							bladeSegments.push(blade);
+						}
+					} else {
+						for (let i = 0; i < numBlades; i++) {
+							const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+							const mirroredBladeX = x - i * (bladeWidth / 20);
+							const mirroredBladeY = y - handleHeight / 2 - i * (bladeHeight / 4.5) * extensionFactor;
+							const mirroredVertices = [
+								{ x: mirroredBladeX, y: mirroredBladeY - bladeHeight / 2 },
+								{ x: mirroredBladeX + bladeWidth / 2, y: mirroredBladeY + bladeHeight / 2 },
+								{ x: mirroredBladeX - bladeWidth / 2, y: mirroredBladeY + bladeHeight / 2 },
+								{ x: mirroredBladeX, y: mirroredBladeY - bladeHeight / 2 + 10 },
+							];
+							const mirroredBlade = Bodies.fromVertices(mirroredBladeX, mirroredBladeY, mirroredVertices, spawn.propsIsNotHoldable);
+							bullet[bullet.length] = mirroredBlade;
+							bullet[bullet.length - 1].do = () => {};
+							Matter.Body.rotate(mirroredBlade, Math.sin(i * (Math.PI / 270) * 15));
+							bladeSegments.push(mirroredBlade);
+						}
 					}
 					const sword = Body.create({
 						parts: [handle, ...bladeSegments],
@@ -260,12 +290,8 @@ javascript:(function() {
 			
 					sword.collisionFilter.category = cat.bullet;
 					sword.collisionFilter.mask = cat.mobBullet | cat.mob;
-			
-					if ((angle > -Math.PI / 2 && angle < Math.PI / 2)) {
-						Body.scale(sword, -1, 1, { x, y });
-					}
-
-					sword.frictionAir -= 0.01;
+					Body.scale(sword, -1, 1, { x, y });
+					// sword.frictionAir -= 0.01;
 			
 					return { sword, bladeSegments };
 				}
