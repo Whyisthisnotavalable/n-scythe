@@ -9,6 +9,7 @@ Use that as a bookmarklet (copy it and paste it into your search bar, sometimes 
 ## n-ai
 
 Another random mod by me
+Don't run this unless your trying to train it or something
 
 ### other stuff
 Join https://discord.gg/Q8gY4WeUcm (Community n-gon discord server)
