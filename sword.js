@@ -26,7 +26,7 @@ javascript:(function() {
 			this.renderDefault();
 		},
 		chooseFireMethod() {
-			if (tech.isStabSword && m.crouch) {
+			if (tech.isStabSword && m.crouch && input.down) {
 				this.fire = this.stabFire
 			} else {
 				this.fire = this.normalFire
@@ -44,7 +44,7 @@ javascript:(function() {
 			}
 			if (input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if (!this.sword && b.guns[b.activeGun].name === 'sword') {
-					Matter.Body.setMass(player, 5000);
+					Matter.Body.setMass(player, 50000);
 					({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
 					this.angle = m.angle;
 				}
@@ -53,12 +53,8 @@ javascript:(function() {
 				this.cycle = 0;
 				Matter.Body.setAngularVelocity(this.sword, 0);
 				Matter.Body.setMass(player, 5)
-				if(player.velocity > 4) {
-					Matter.Body.setVelocity(player, {
-						x: player.velocity * 0.01, 
-						y: player.velocity * 0.01
-					})
-				}
+				player.force.x *= 0.01;
+				player.force.y *= 0.01;
 				Composite.remove(engine.world, this.sword);
 				this.sword.parts.forEach(part => {
 					Composite.remove(engine.world, part);
@@ -97,7 +93,7 @@ javascript:(function() {
 						
 						ctx.beginPath()
 						if((this.charge / 10) >= 1 && flashEffect > 0) {
-							ctx.font = "150px serif";
+							ctx.font = "lighter 150px serif";
 							ctx.textAlign = "center";
 							ctx.fillStyle = "black";
 							ctx.fillText("⚠", simulation.mouseInGame.x, simulation.mouseInGame.y + 75 / 2);
@@ -140,6 +136,8 @@ javascript:(function() {
 						this.cycle = 0;
 						Matter.Body.setAngularVelocity(this.sword, 0);
 						Matter.Body.setMass(player, 5)
+						player.force.x *= 0.01;
+						player.force.y *= 0.01;
 						if(player.velocity > 4) {
 							Matter.Body.setVelocity(player, {
 								x: player.velocity * 0.01, 
@@ -195,7 +193,7 @@ javascript:(function() {
 				}
 			}
 			
-			if(input.fire && m.fireCDcycle > m.cycle) {
+			if(input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if(tech.isEnergyHealth) {
 					m.energy -= 0.004;8
 				} else {
@@ -214,12 +212,8 @@ javascript:(function() {
 				this.cycle = 0;
 				Matter.Body.setAngularVelocity(this.sword, 0);
 				Matter.Body.setMass(player, 5)
-				if(player.velocity > 4) {
-					Matter.Body.setVelocity(player, {
-						x: player.velocity * 0.01, 
-						y: player.velocity * 0.01
-					})
-				}
+				player.force.x *= 0.01;
+				player.force.y *= 0.01;
 				Composite.remove(engine.world, this.sword);
 				this.sword.parts.forEach(part => {
 					Composite.remove(engine.world, part);
@@ -249,8 +243,8 @@ javascript:(function() {
 						Matter.Body.setAngularVelocity(this.sword, Math.PI * 0.1);
 					}
 					if(tech.sizeIllusion) {
-						player.force.x += Math.cos(m.angle) * player.mass / 200;
-						player.force.y += Math.sin(m.angle) * player.mass / 200;
+						player.force.x += Math.cos(m.angle) * player.mass / 500;
+						player.force.y += Math.sin(m.angle) * player.mass / 500;
 					}
 					if(!this.constraint && (m.angle > -Math.PI / 2 && m.angle < Math.PI / 2)) {
 						this.constraint = Constraint.create({
@@ -282,6 +276,8 @@ javascript:(function() {
 					this.cycle = 0;
 					Matter.Body.setAngularVelocity(this.sword, 0);
 					Matter.Body.setMass(player, 5)
+					player.force.x *= 0.01;
+					player.force.y *= 0.01;
 					Composite.remove(engine.world, this.sword);
 					this.sword.parts.forEach(part => {
 						Composite.remove(engine.world, part);
@@ -301,72 +297,81 @@ javascript:(function() {
 			}
 		},
 		createAndSwingSword(x = player.position.x, y = player.position.y, angle = m.angle) {
-			if (true) {
-				// this.cycle = Infinity;
-				m.fireCDcycle = Infinity;
-				const handleWidth = 20;
-				const handleHeight = 150;
-				const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
-				bullet[bullet.length] = handle;
-				handle.customName = "handle";
-				bullet[bullet.length - 1].do = () => {};
-				const bladeWidth = 100;
-				const bladeHeight = 20;
-				const numBlades = 15;
-				const extensionFactor = 5;
-				const bladeSegments = [];
-				if ((angle > -Math.PI / 2 && angle < Math.PI / 2)) {
-					for (let i = 0; i < numBlades; i++) {
-						const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
-						const bladeX = x + i * (bladeWidth / 20);
-						const bladeY = y - handleHeight / 2 - i * (bladeHeight / 4.5) * extensionFactor;
-			
-						const vertices = [
-							{ x: bladeX, y: bladeY - bladeHeight / 2 }, 
-							{ x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
-							{ x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
-							{ x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
-						];
-			
-						const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
-						bullet[bullet.length] = blade;
-						bullet[bullet.length - 1].do = () => {};
-						Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 270) * 15));
-						bladeSegments.push(blade);
-					}
-				} else {
-					for (let i = 0; i < numBlades; i++) {
-						const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
-						const mirroredBladeX = x - i * (bladeWidth / 20);
-						const mirroredBladeY = y - handleHeight / 2 - i * (bladeHeight / 4.5) * extensionFactor;
-						const mirroredVertices = [
-							{ x: mirroredBladeX, y: mirroredBladeY - bladeHeight / 2 },
-							{ x: mirroredBladeX + bladeWidth / 2, y: mirroredBladeY + bladeHeight / 2 },
-							{ x: mirroredBladeX - bladeWidth / 2, y: mirroredBladeY + bladeHeight / 2 },
-							{ x: mirroredBladeX, y: mirroredBladeY - bladeHeight / 2 + 10 },
-						];
-						const mirroredBlade = Bodies.fromVertices(mirroredBladeX, mirroredBladeY, mirroredVertices, spawn.propsIsNotHoldable);
-						bullet[bullet.length] = mirroredBlade;
-						bullet[bullet.length - 1].do = () => {};
-						Matter.Body.rotate(mirroredBlade, Math.sin(i * (Math.PI / 270) * 15));
-						bladeSegments.push(mirroredBlade);
-					}
+			const handleWidth = 20;
+			const handleHeight = 150;
+			const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = handle;
+			handle.customName = "handle";
+			bullet[bullet.length - 1].do = () => {};
+			const pommelWidth = 30;
+			const pommelHeight = 40;
+			const pommelVertices = [
+				{ x: x, y: y + handleHeight / 2 + pommelHeight / 2 },
+				{ x: x + pommelWidth / 2, y: y + handleHeight / 2 },
+				{ x: x, y: y + handleHeight / 2 - pommelHeight / 2 },
+				{ x: x - pommelWidth / 2, y: y + handleHeight / 2 },
+			];
+			const pommel = Bodies.fromVertices(x, y + handleHeight / 2, pommelVertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = pommel;
+			bullet[bullet.length - 1].do = () => {};
+			// Blade setup
+			const bladeWidth = 100;
+			const bladeHeight = 20;
+			const numBlades = 15;
+			const extensionFactor = 5;
+			const bladeSegments = [];
+
+			if ((angle > -Math.PI / 2 && angle < Math.PI / 2)) {
+				for (let i = 0; i < numBlades; i++) {
+					const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+					const bladeX = x + i * (bladeWidth / 20);
+					const bladeY = y - handleHeight / 2 - i * (bladeHeight / 4.5) * extensionFactor;
+		
+					const vertices = [
+						{ x: bladeX, y: bladeY - bladeHeight / 2 }, 
+						{ x: bladeX + bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+						{ x: bladeX - bladeWidth / 2, y: bladeY + bladeHeight / 2 },
+						{ x: bladeX, y: bladeY - bladeHeight / 2 + 10 },
+					];
+		
+					const blade = Bodies.fromVertices(bladeX, bladeY, vertices, spawn.propsIsNotHoldable);
+					bullet[bullet.length] = blade;
+					bullet[bullet.length - 1].do = () => {};
+					Matter.Body.rotate(blade, -Math.sin(i * (Math.PI / 270) * 15));
+					bladeSegments.push(blade);
 				}
-				const sword = Body.create({
-					parts: [handle, ...bladeSegments],
-				});
-		
-				Composite.add(engine.world, sword);
-				Matter.Body.setPosition(sword, {x, y});
-		
-				sword.collisionFilter.category = cat.bullet;
-				sword.collisionFilter.mask = cat.mobBullet | cat.mob;
-				Body.scale(sword, -1, 1, { x, y });
-				// sword.frictionAir -= 0.01;
-		
-				return { sword, bladeSegments };
+			} else {
+				for (let i = 0; i < numBlades; i++) {
+					const extensionFactorFraction = (i / (numBlades - 1)) * extensionFactor;
+					const mirroredBladeX = x - i * (bladeWidth / 20);
+					const mirroredBladeY = y - handleHeight / 2 - i * (bladeHeight / 4.5) * extensionFactor;
+					const mirroredVertices = [
+						{ x: mirroredBladeX, y: mirroredBladeY - bladeHeight / 2 },
+						{ x: mirroredBladeX + bladeWidth / 2, y: mirroredBladeY + bladeHeight / 2 },
+						{ x: mirroredBladeX - bladeWidth / 2, y: mirroredBladeY + bladeHeight / 2 },
+						{ x: mirroredBladeX, y: mirroredBladeY - bladeHeight / 2 + 10 },
+					];
+					const mirroredBlade = Bodies.fromVertices(mirroredBladeX, mirroredBladeY, mirroredVertices, spawn.propsIsNotHoldable);
+					bullet[bullet.length] = mirroredBlade;
+					bullet[bullet.length - 1].do = () => {};
+					Matter.Body.rotate(mirroredBlade, Math.sin(i * (Math.PI / 270) * 15));
+					bladeSegments.push(mirroredBlade);
+				}
 			}
-		}, 
+			bladeSegments.push(pommel);
+			const sword = Body.create({
+				parts: [handle, ...bladeSegments],
+			});
+
+			Composite.add(engine.world, sword);
+			Matter.Body.setPosition(sword, { x, y });
+
+			sword.collisionFilter.category = cat.bullet;
+			sword.collisionFilter.mask = cat.mobBullet | cat.mob;
+			Body.scale(sword, -1, 1, { x, y });
+
+			return { sword, bladeSegments };
+		},
 		renderDefault() {
 			if(this.sword) {
 				for (let i = 0; i < this.bladeSegments.length; i++) {
@@ -483,7 +488,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() {
-				return tech.haveGunCheck("sword")
+				return tech.haveGunCheck("sword") && !tech.isStabSword
 			},
 			requires: "sword",
 			effect() {
@@ -503,8 +508,8 @@ javascript:(function() {
 			count: 0,
 			frequency: 2,
 			frequencyDefault: 2,
-			allowed() {
-				return tech.haveGunCheck("sword")
+			allowed() { 
+				return tech.haveGunCheck("sword") && !tech.sizeIllusion
 			},
 			requires: "sword",
 			effect() {
