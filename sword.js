@@ -33,6 +33,9 @@ javascript:(function() {
 			}
 		},
 		stabFire() {
+			if(this.constraint) {
+				this.constraint.pointA = player.position;
+			}
 			if(this.sword) {
 				this.stabStatus = true;
 				if(tech.isEnergyHealth) {
@@ -44,7 +47,6 @@ javascript:(function() {
 			}
 			if (input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if (!this.sword && b.guns[b.activeGun].name === 'sword') {
-					Matter.Body.setMass(player, 50000);
 					({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
 					this.angle = m.angle;
 				}
@@ -52,7 +54,6 @@ javascript:(function() {
 			if(this.sword && this.released == true && this.charge <= 0) {
 				this.cycle = 0;
 				Matter.Body.setAngularVelocity(this.sword, 0);
-				Matter.Body.setMass(player, 5)
 				player.force.x *= 0.01;
 				player.force.y *= 0.01;
 				Composite.remove(engine.world, this.sword);
@@ -73,6 +74,11 @@ javascript:(function() {
 				this.released = false;
 			} else {
 				if (this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
+					if(tech.infinityEdge) {
+						const newSize = Math.sqrt(0.5 * m.health) + 1;
+						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), handle.position);
+						this.sword.scale = newSize;
+					}
 					let handle;
 					for(let i = 0; i < bullet.length; i++) {
 						if(bullet[i].customName == "handle") {
@@ -111,22 +117,21 @@ javascript:(function() {
 					}
 					if(!this.constraint && (m.angle > -Math.PI / 2 && m.angle < Math.PI / 2)) {
 						this.constraint = Constraint.create({
-							bodyA: player,
+							pointA: player.position,
 							bodyB: this.sword,
 							pointB: {x: -9, y: ((handle.position.y - this.sword.position.y))},
 							stiffness: 0.085,
-							damping: 0.2,
+							damping: 0.1,
 							length: 0,
-							
 						});
 						Composite.add(engine.world, this.constraint);
 					} else if(!this.constraint) {
 						this.constraint = Constraint.create({
-							bodyA: player,
+							pointA: player.position,
 							bodyB: this.sword,
 							pointB: {x: 9, y: ((handle.position.y - this.sword.position.y))},
 							stiffness: 0.085,
-							damping: 0.2,
+							damping: 0.1,
 							length: 0,
 						});
 						Composite.add(engine.world, this.constraint);
@@ -135,7 +140,6 @@ javascript:(function() {
 					if(this.sword) {
 						this.cycle = 0;
 						Matter.Body.setAngularVelocity(this.sword, 0);
-						Matter.Body.setMass(player, 5)
 						player.force.x *= 0.01;
 						player.force.y *= 0.01;
 						if(player.velocity > 4) {
@@ -165,6 +169,9 @@ javascript:(function() {
 			}
 		},
 		normalFire() {
+			if(this.constraint) {
+				this.constraint.pointA = player.position;
+			}
 			if(tech.isStabSword && !m.crouch && this.cycle > 0 && this.stabStatus) {
 				if(this.sword) {
 					this.stabStatus = false;
@@ -174,7 +181,6 @@ javascript:(function() {
 					}
 					this.cycle = 0;
 					Matter.Body.setAngularVelocity(this.sword, 0);
-					Matter.Body.setMass(player, 5)
 					Composite.remove(engine.world, this.sword);
 					this.sword.parts.forEach(part => {
 						Composite.remove(engine.world, part);
@@ -195,7 +201,7 @@ javascript:(function() {
 			
 			if(input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if(tech.isEnergyHealth) {
-					m.energy -= 0.004;8
+					m.energy -= 0.004;
 				} else {
 					m.health -= 0.001;
 					m.displayHealth();
@@ -203,7 +209,6 @@ javascript:(function() {
 			}
 			if (input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if (!this.sword && b.guns[b.activeGun].name === 'sword') {
-					Matter.Body.setMass(player, 1000);
 					({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
 					this.angle = m.angle;
 				}
@@ -211,7 +216,6 @@ javascript:(function() {
 			if(this.sword && !input.fire) {
 				this.cycle = 0;
 				Matter.Body.setAngularVelocity(this.sword, 0);
-				Matter.Body.setMass(player, 5)
 				player.force.x *= 0.01;
 				player.force.y *= 0.01;
 				Composite.remove(engine.world, this.sword);
@@ -237,6 +241,11 @@ javascript:(function() {
 							 handle = bullet[i];
 						}
 					}
+					if(tech.infinityEdge) {
+						const newSize = Math.sqrt(0.5 * m.health) + 1;
+						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), handle.position);
+						this.sword.scale = newSize;
+					}
 					if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
 						Matter.Body.setAngularVelocity(this.sword, -Math.PI * 0.1);
 					} else {
@@ -248,22 +257,22 @@ javascript:(function() {
 					}
 					if(!this.constraint && (m.angle > -Math.PI / 2 && m.angle < Math.PI / 2)) {
 						this.constraint = Constraint.create({
-							bodyA: player,
+							pointA: player.position,
 							bodyB: this.sword,
 							pointB: {x: -9, y: ((handle.position.y - this.sword.position.y))},
-							stiffness: 0.1,
-							damping: 0.0001815,
+							stiffness: (tech.infinityEdge ? 0.05 : 0.1),
+							damping: 0.001815,
 							length: 0,
 							
 						});
 						Composite.add(engine.world, this.constraint);
 					} else if(!this.constraint) {
 						this.constraint = Constraint.create({
-							bodyA: player,
+							pointA: player.position,
 							bodyB: this.sword,
 							pointB: {x: 9, y: ((handle.position.y - this.sword.position.y))},
-							stiffness: 0.1,
-							damping: 0.0001815,
+							stiffness: (tech.infinityEdge ? 0.05 : 0.1),
+							damping: 0.001815,
 							length: 0,
 						});
 						Composite.add(engine.world, this.constraint);
@@ -275,7 +284,6 @@ javascript:(function() {
 					}
 					this.cycle = 0;
 					Matter.Body.setAngularVelocity(this.sword, 0);
-					Matter.Body.setMass(player, 5)
 					player.force.x *= 0.01;
 					player.force.y *= 0.01;
 					Composite.remove(engine.world, this.sword);
@@ -436,7 +444,7 @@ javascript:(function() {
 			if(this.sword) {
 				for (let i = 0; i < mob.length; i++) {
 					if (Matter.Query.collides(this.sword, [mob[i]]).length > 0) {
-						const dmg = m.dmgScale * 6 * Math.sqrt(this.sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1);
+						const dmg = m.dmgScale * 6 * Math.sqrt(this.sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1) * (tech.infinityEdge ? 1.1 : 1);
 						if(m.health < 0.9) {
 							if(tech.isEnergyHealth) {
 								m.energy += 0.04;
@@ -519,8 +527,52 @@ javascript:(function() {
 				tech.isStabSword = false;
 			}
 		},
+		{
+			name: "cantor's theorem",
+			descriptionFunction() {
+				return `sword size <b>scales</b> by <b class="color-h">health</b><br><b>+10%</b> <b class="color-d">damage</b>`
+			},
+			isGunTech: true,
+			maxCount: 1,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() { 
+				return tech.haveGunCheck("sword")
+			},
+			requires: "sword",
+			effect() {
+				tech.infinityEdge = true;
+			},
+			remove() {
+				tech.infinityEdge = false;
+			}
+		},
 	];
 	t.reverse();
+	const jt = [
+		{
+			name: "creativeNameTech",
+			descriptionFunction() {
+				return `average sped moment<br>become sped itself`
+			},
+			isGunTech: false,
+			maxCount: Infinity,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() { 
+				return true
+			},
+			requires: "not sped",
+			effect() {
+				Matter.Body.scale(player, 0.9, 0.9, player.position);
+			},
+			remove() {
+				Matter.Body.scale(player, 1.1, 1.1, player.position);
+			}
+		},
+	]
 	for(let i = 0; i < tech.tech.length; i++) {
 		if(tech.tech[i].name === 'spherical harmonics') {
 			for(let j = 0; j < t.length; j++) {
@@ -529,6 +581,10 @@ javascript:(function() {
 			break;
 		}
 	}
+	for(let i = 0; i < jt.length; i++) {
+		tech.tech.push(jt[i]);
+	}
+	tech.tech.push()
 	const techArray = tech.tech.filter(
 		(obj, index, self) =>
 			index === self.findIndex((item) => item.name === obj.name)
