@@ -556,7 +556,7 @@ javascript:(function() {
 			descriptionFunction() {
 				return `average sped moment<br>become sped itself`
 			},
-			isGunTech: false,
+			isJUNK: true,
 			maxCount: Infinity,
 			count: 0,
 			frequency: 2,
@@ -566,10 +566,17 @@ javascript:(function() {
 			},
 			requires: "not sped",
 			effect() {
-				Matter.Body.scale(player, 0.9, 0.9, player.position);
+				Matter.Body.scale(jumpSensor, 0.9, 0.9, jumpSensor.position);
+				// Matter.Body.scale(playerBody, 0.9, 0.9, playerBody.position);
+				// Matter.Body.scale(playerHead, 0.9, 0.9, playerHead.position);
+				Matter.Body.scale(headSensor, 0.9, 0.9, headSensor.position);
+				
 			},
 			remove() {
-				Matter.Body.scale(player, 1.1, 1.1, player.position);
+				Matter.Body.scale(jumpSensor, 1.1, 1.1, jumpSensor.position);
+				// Matter.Body.scale(playerBody, 1.1, 1.1, playerBody.position);
+				// Matter.Body.scale(playerHead, 1.1, 1.1, playerHead.position);
+				Matter.Body.scale(headSensor, 1.1, 1.1, headSensor.position);
 			}
 		},
 	]
