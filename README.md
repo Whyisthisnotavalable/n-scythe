@@ -14,7 +14,9 @@ Don't run this unless your trying to train it or something
 
 ## minmap
 
-doesn't work yet
+> javascript:var r = new XMLHttpRequest(); r.open("GET", 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/minmap.js', true); r.onloadend = function (oEvent) {new Function(r.responseText)();}; r.send();
+> 
+minor mod that shows mobs and stuff
 
 ### other stuff
 Join https://discord.gg/Q8gY4WeUcm (Community n-gon discord server)
