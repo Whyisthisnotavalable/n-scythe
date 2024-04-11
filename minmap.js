@@ -29,7 +29,7 @@ javascript:(function() {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 5px;
+		padding: 0.2vw;
 		background-color: gray;
 	}
 	
