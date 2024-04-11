@@ -12,5 +12,9 @@ Another random mod by me
 >
 Don't run this unless your trying to train it or something
 
+## minmap
+
+doesn't work yet
+
 ### other stuff
 Join https://discord.gg/Q8gY4WeUcm (Community n-gon discord server)
