@@ -54,7 +54,7 @@ javascript:(function() {
 	let mapDiv = document.createElement("div");
 	let minMap = document.createElement("canvas");
 	let mapControls = document.createElement("div");
-
+	let zoom = 1;
 	mapDiv.id = "mapDiv";
 	minMap.id = "minMap";
 	mapControls.id = "mapControls";
@@ -75,13 +75,25 @@ javascript:(function() {
 		}
 	}
 	document.getElementById("toggleDivButton").addEventListener("click", toggleVis);
+	document.getElementById("minMap").addEventListener("wheel", (e) => {
+		if (!simulation.paused) {
+			if (e.deltaY > 0) {
+				zoom -= 0.01;
+			} else {
+				zoom += 0.01;
+			}
+		}
+	}, {
+		passive: true
+	});
 	function mapLoop() {
+		zoom = Math.max(Math.min(zoom, 2), 0.8);
 		minMap.style.backgroundColor = document.body.style.backgroundColor;
 		c.clearRect(0, 0, minMap.width, minMap.height);
 		
 		c.save();
-		c.scale(0.05, 0.05);
-		c.translate(-m.pos.x + minMap.width * 10, -m.pos.y + minMap.height * 10);
+		c.scale(0.025 * zoom, 0.025 * zoom);
+		c.translate(-m.pos.x + minMap.width * 20 / zoom, -m.pos.y + minMap.height * 20 / zoom);
 		
 		c.lineWidth = 2;
         let i = mob.length;
