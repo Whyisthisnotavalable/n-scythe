@@ -68,24 +68,12 @@ javascript:(function() {
 		height: 0;
 	}
 	
-	.banner {
-		background-color: white; 
-		padding: 2.5px; 
-		border-radius: 2px; 
-		width: 6vw;
-		animation: fade 20s;
-		opacity: 0;
-		animation-iteration-count: 1;
+	.rotate {
+		rotate: 45deg;
 	}
 	
-	@keyframes fade {
-		from {
-			opacity: 1;
-		}
-
-		to {
-			opacity: 0;
-		}
+	#rotate {
+		transition-duration: 250ms;
 	}
 	`;
 	style.appendChild(document.createTextNode(css));
@@ -102,10 +90,11 @@ javascript:(function() {
 	mapDiv.appendChild(minMap);
 	mapDiv.appendChild(mapControls);
 
-	mapControls.innerHTML = `<button id="toggleDivButton">❌&#xFE0E;</button> <marquee class="banner">Right button: hide/show - Left button: opacity</marquee> <button id="opacity">100%</button>`;
+	mapControls.innerHTML = `<button id="toggleDivButton"><div id="rotate">❌&#xFE0E;<div></button> <button id="opacity">100%</button>`;
 	let c = minMap.getContext("2d");
 	function toggleVis() {
 		minMap.classList.toggle("hidden");
+		document.getElementById("rotate").classList.toggle("rotate");
 		
 		if (minMap.classList.contains("hidden")) {
 			mapDiv.style.height = "4vh";
