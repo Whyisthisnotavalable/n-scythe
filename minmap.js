@@ -14,8 +14,8 @@ javascript:(function() {
 		width: 15vw;
 		height: 20vh;
 		background-color: gray;
-		border: 5px solid gray;
-		border-radius: 5px;
+		border: 0.5vw solid gray;
+		border-radius: 0.5vw;
 		z-index: 999;
 		cursor: move;
 	}
@@ -29,8 +29,18 @@ javascript:(function() {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.2vw;
+		padding: 0vw;
 		background-color: gray;
+		font-size: 1.1vw;
+	}
+	
+	#toggleDivButton {
+		width: 4vw;
+		height: 4vh;
+		background-color: white;
+		color: black;
+		border-radius: 0.5vw;
+		font-size: 1vw;
 	}
 	
 	.hidden {
@@ -53,7 +63,7 @@ javascript:(function() {
 	mapDiv.appendChild(minMap);
 	mapDiv.appendChild(mapControls);
 
-	mapControls.innerHTML = `<button id="toggleDivButton">❌</button> <div style="background-color: white; padding: 2.5px; border-radius: 2px;">hide/show</div>`;
+	mapControls.innerHTML = `<button id="toggleDivButton">❌&#xFE0E;</button> <div style="background-color: white; padding: 2.5px; border-radius: 2px;">hide/show</div>`;
 	let c = minMap.getContext("2d");
 	function toggleVis() {
 		minMap.classList.toggle("hidden");
