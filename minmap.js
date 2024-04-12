@@ -18,7 +18,7 @@ javascript:(function() {
 		border-radius: 0.5vw;
 		z-index: 999;
 		cursor: move;
-	}
+	}	
 
 	#minMap {
 		width: 100%;
@@ -41,12 +41,51 @@ javascript:(function() {
 		color: black;
 		border-radius: 0.5vw;
 		font-size: 1vw;
+		transition-duration: 100ms;
+	}
+	
+	#toggleDivButton:hover {
+		background-color: #CCCCCC;
+	}
+	
+	#opacity {
+		width: 4vw;
+		height: 4vh;
+		background-color: white;
+		color: black;
+		border-radius: 0.5vw;
+		font-size: 0.9vw;
+		transition-duration: 100ms;
+	}
+	
+	#opacity:hover {
+		background-color: #CCCCCC;
 	}
 	
 	.hidden {
 		display: none;
 		width: 0;
 		height: 0;
+	}
+	
+	.banner {
+		background-color: white; 
+		padding: 2.5px; 
+		border-radius: 2px; 
+		width: 6vw;
+		animation: fade 20s;
+		opacity: 0;
+		animation-iteration-count: 1;
+	}
+	
+	@keyframes fade {
+		from {
+			opacity: 1;
+		}
+
+		to {
+			opacity: 0;
+		}
 	}
 	`;
 	style.appendChild(document.createTextNode(css));
@@ -63,7 +102,7 @@ javascript:(function() {
 	mapDiv.appendChild(minMap);
 	mapDiv.appendChild(mapControls);
 
-	mapControls.innerHTML = `<button id="toggleDivButton">❌&#xFE0E;</button> <div style="background-color: white; padding: 2.5px; border-radius: 2px;">hide/show</div>`;
+	mapControls.innerHTML = `<button id="toggleDivButton">❌&#xFE0E;</button> <marquee class="banner">Right button: hide/show - Left button: opacity</marquee> <button id="opacity">100%</button>`;
 	let c = minMap.getContext("2d");
 	function toggleVis() {
 		minMap.classList.toggle("hidden");
@@ -74,7 +113,30 @@ javascript:(function() {
 			mapDiv.style.height = "20vh";
 		}
 	}
+	function toggleOps() {
+		let elmt = document.getElementById("opacity")
+		if(elmt.innerHTML == "100%") {
+			elmt.innerHTML = "75%";
+			mapDiv.style.opacity = 0.75;
+		} else if(elmt.innerHTML == "75%") {
+			elmt.innerHTML = "50%";
+			mapDiv.style.opacity = 0.5;
+		} else if(elmt.innerHTML == "50%") {
+			elmt.innerHTML = "25%";
+			mapDiv.style.opacity = 0.25;
+		} else if(elmt.innerHTML == "25%") {
+			elmt.innerHTML = "10%";
+			mapDiv.style.opacity = 0.1;
+		} else if(elmt.innerHTML == "10%") {
+			elmt.innerHTML = "100%";
+			mapDiv.style.opacity = 1;
+		} else {
+			elmt.innerHTML = "100%";
+			mapDiv.style.opacity = 1;
+		}
+	}
 	document.getElementById("toggleDivButton").addEventListener("click", toggleVis);
+	document.getElementById("opacity").addEventListener("click", toggleOps);
 	document.getElementById("minMap").addEventListener("wheel", (e) => {
 		if (!simulation.paused) {
 			if (e.deltaY > 0) {
@@ -177,6 +239,7 @@ javascript:(function() {
 		}
 
 		function dragMouseDown(e) {
+			m.fireCDcycle = Infinity;
 			e = e || window.event;
 			e.preventDefault();
 			pos3 = e.clientX;
@@ -219,6 +282,7 @@ javascript:(function() {
 		}
 
 		function closeDragElement() {
+			m.fireCDcycle = 0;
 			document.onmouseup = null;
 			document.onmousemove = null;
 		}
