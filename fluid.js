@@ -17,7 +17,7 @@ javascript:(function() {
             if (m.energy > DRAIN && this.canMRFire) {
                 m.energy -= DRAIN;
                 if (m.energy < 0) {
-                    m.fieldCDcycle = m.cycle + 120;
+                    m.fireCDcycle = m.cycle + 120;
                     m.energy = 0;
                 }
                 this.isMROn = true;
@@ -95,9 +95,8 @@ javascript:(function() {
         },
         do() {
             this.cycle++;
-            if (input.fire) {
+            if (input.fire && m.cycle > m.fireCDcycle) {
                 this.wasMROn = true;
-                this.canMRFire = true;
             } else {
                 this.wasMROn = false;
                 this.canMRFire = true;
