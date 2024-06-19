@@ -20,5 +20,13 @@ minor mod that shows mobs and stuff
 >
 you can scroll to zoom in or out
 
+## n-fluid
+
+>javascript:var r = new XMLHttpRequest(); r.open("GET", 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/fluid.js', true); r.onloadend = function (oEvent) {new Function(r.responseText)();}; r.send();
+>
+Heavily modified extruder
+>
+Takes inspiration from https://github.com/landgreen/n-gon/issues/268
+
 ### other stuff
 Join https://discord.gg/Q8gY4WeUcm (Community n-gon discord server)
