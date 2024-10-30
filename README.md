@@ -1,3 +1,5 @@
+<img src="https://github.com/user-attachments/assets/7a53a96d-b038-4f01-934b-27d54968621d" alt="drawing" width="100"></img>
+>
 # n-scythe
 >
 ```
