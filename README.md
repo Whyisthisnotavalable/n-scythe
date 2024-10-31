@@ -6,7 +6,7 @@
 javascript:var r = new XMLHttpRequest(); r.open("GET", 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/scythe.js', true); r.onloadend = function (oEvent) {new Function(r.responseText)();}; r.send();
 ```
 >
-Use that as a bookmarklet (copy it and paste it into your search bar, sometimes the "javascript:" disappears, so make sure that it's there)
+Use that as a bookmarklet (copy it and paste it into your search bar, sometimes the "javascript:" disappears, so make sure that it's there). Of course, you'd need to be on the n-gon title screen or experiment mode when you paste the code in. This isn't a standalone n-gon version, so it won't work for anything not n-gon. This applies to all of the mods here.
 # n-sword
 >
 ```
