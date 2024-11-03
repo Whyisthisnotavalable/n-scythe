@@ -478,5 +478,5 @@ javascript:(function() {
 			index === self.findIndex((item) => item.name === obj.name)
 		);
 	tech.tech = techArray;
-	console.log("%cscythe mod successfully installed", "color: crimson");
+	console.log("%cScythe mod successfully installed", "color: crimson");
 })();
