@@ -19,6 +19,13 @@ javascript:var r = new XMLHttpRequest(); r.open("GET", 'https://raw.githubuserco
 javascript:var r = new XMLHttpRequest(); r.open("GET", 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/spear.js', true); r.onloadend = function (oEvent) {new Function(r.responseText)();}; r.send();
 ```
 >
+# tachyonic field
+>
+```
+javascript:var r = new XMLHttpRequest(); r.open("GET", 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/refs/heads/main/tachyonic%20field.js', true); r.onloadend = function (oEvent) {new Function(r.responseText)();}; r.send();
+```
+My first field mod!
+>
 ## n-ai
 
 Another random mod by me
