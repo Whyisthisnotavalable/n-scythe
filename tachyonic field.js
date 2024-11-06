@@ -97,7 +97,7 @@ javascript:(function() {
 				const dist = Vector.sub(simulation.mouseInGame, player.position);
 				const distMag = Vector.magnitude(dist);
 				const radius = 400;
-				if (distMag < radius) {
+				if (distMag < radius || m.isHolding) {
 					this.canMove = false;
 				} else {
 					this.canMove = true;
@@ -105,10 +105,19 @@ javascript:(function() {
 				ctx.beginPath();
 				ctx.moveTo(player.position.x + radius, player.position.y);
 				ctx.lineWidth = 2;
+				// ctx.setLineDash([Math.PI * 200 + Math.sin(simulation.cycle / 200) * Math.PI * 200, Math.PI * 200 - Math.sin(simulation.cycle / 200) * Math.PI * 200]); //cool, but not necessary
 				ctx.arc(player.position.x, player.position.y, radius, 0, 2 * Math.PI);
-				ctx.strokeStyle = "#949494";
+				ctx.strokeStyle = "#909090";
+				ctx.fillStyle = !this.canMove ? "rgba(220, 20, 60, 0.05)" : "transparent";
 				ctx.stroke();
-				m.energy = Math.max(0, Math.min(m.maxEnergy, m.energy));
+				ctx.fill();
+				// ctx.setLineDash([]);
+				ctx.textAlign = "center";
+				ctx.fillStyle = !this.canMove ? "rgba(220, 20, 60, 0.02)" : "transparent";
+				ctx.font = "lighter 800px serif";
+				ctx.fillText("⚠", player.position.x, player.position.y + 200);
+
+				// m.energy = Math.max(0, Math.min(m.maxEnergy, m.energy));
 				
 				if (input.field && m.fieldCDcycle < m.cycle && this.canMove && m.energy > 0.2 && (player.velocity.x || player.velocity.y) && !this.haveEphemera) {
 					this.haveEphemera = true;
@@ -199,8 +208,6 @@ javascript:(function() {
 							ctx.restore()
 						}
 					})
-				} else {
-					
 				}
 				
 				if (m.isHolding) {
