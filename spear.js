@@ -58,9 +58,33 @@ javascript:(function() {
 				})
 			}
 			if(this.cycle === 0) {
-				const oldEffect = powerUps.ammo.effect;
 				powerUps.ammo.effect = () => {
-					oldEffect;
+					const couplingExtraAmmo = (m.fieldMode === 10 || m.fieldMode === 0) ? 1 + 0.04 * m.coupling : 1
+					if (b.inventory.length > 0) {
+						powerUps.animatePowerUpGrab('rgba(68, 102, 119,0.25)')
+						if (tech.isAmmoForGun && b.activeGun !== null) { //give extra ammo to one gun only with tech logistics
+							const name = b.guns[b.activeGun]
+							if (name.ammo !== Infinity) {
+								if (tech.ammoCap) {
+									name.ammo = Math.ceil(2 * name.ammoPack * tech.ammoCap * couplingExtraAmmo)
+								} else {
+									name.ammo += Math.ceil(2 * (Math.random() + Math.random()) * name.ammoPack * couplingExtraAmmo)
+								}
+							}
+						} else { //give ammo to all guns in inventory
+							for (let i = 0, len = b.inventory.length; i < len; i++) {
+								const name = b.guns[b.inventory[i]]
+								if (name.ammo !== Infinity) {
+									if (tech.ammoCap) {
+										name.ammo = Math.ceil(name.ammoPack * tech.ammoCap * couplingExtraAmmo)
+									} else { //default ammo behavior
+										name.ammo += Math.ceil((Math.random() + Math.random()) * name.ammoPack * couplingExtraAmmo)
+									}
+								}
+							}
+						}
+					}
+					simulation.updateGunHUD();
 					for (let i = 0, len = b.inventory.length; i < len; ++i) {
 						if(b.guns[b.inventory[i]].name === "spear") {
 							b.guns[b.inventory[i]].durability += (tech.isAmmoForGun && b.guns[b.activeGun].name === 'spear') ? 30 - (tech.tempering ? tech.tempering : 0): 15 - (tech.tempering ? tech.tempering : 0);
@@ -145,7 +169,7 @@ javascript:(function() {
 				if (this.oldSpear === undefined) {
 					this.oldSpear = { position: { x: 0, y: 0 } };
 				}
-				const t = 0.9; //doesn't work, don't know why
+				const t = 0.1;
 				let interpolateX = (1 - t) * this.oldSpear.position.x + t * this.spear.position.x;
 				let interpolateY = (1 - t) * this.oldSpear.position.y + t * this.spear.position.y;
 				this.drawPerlinWaveCircle(interpolateX, interpolateY, range);
@@ -690,15 +714,22 @@ javascript:(function() {
 				tech.tempering = this.count;
 				for (let i = 0, len = b.inventory.length; i < len; ++i) {
 					if(b.guns[b.inventory[i]].name === "spear") {
-						b.guns[b.inventory[i]].maxDurability += 100;
+						b.guns[b.inventory[i]].maxDurability = 100;
 					}
 				}
 			},
-			remove() {
-				tech.tempering = this.count;
+			remove() { //reset code here because it doesn't work anywhere else :/
+				tech.tempering = this.count; 
 				for (let i = 0, len = b.inventory.length; i < len; ++i) {
-					if(b.guns[b.inventory[i]].name === "spear") {
+					if(b.guns[b.inventory[i]].name === "spear" && b.guns[b.inventory[i]].maxDurability > 300) {
 						b.guns[b.inventory[i]].maxDurability -= 100;
+					} else {
+						if(b.guns[b.inventory[i]].name === "spear" && !m.alive) {
+							b.guns[b.inventory[i]].cycle = 0;
+							b.guns[b.inventory[i]].haveEphemera = false;
+							b.guns[b.inventory[i]].durability = 300;
+							b.guns[b.inventory[i]].maxDurability = 300;
+						}
 					}
 				}
 			}
