@@ -112,13 +112,42 @@ javascript:(function() {
 				ctx.stroke();
 				ctx.fill();
 				// ctx.setLineDash([]);
-				ctx.textAlign = "center";
+				ctx.beginPath();
 				ctx.fillStyle = !this.canMove ? "rgba(220, 20, 60, 0.02)" : "transparent";
-				ctx.font = "lighter 800px serif";
-				ctx.fillText("⚠", player.position.x, player.position.y + 200);
-
-				// m.energy = Math.max(0, Math.min(m.maxEnergy, m.energy));
+				ctx.moveTo(player.position.x, player.position.y - radius);
+				ctx.lineTo(player.position.x + radius, player.position.y);
+				ctx.lineTo(player.position.x, player.position.y + radius);
+				ctx.lineTo(player.position.x - radius, player.position.y);
+				ctx.closePath();
+				ctx.fill();
 				
+				ctx.beginPath();
+				ctx.strokeStyle = !this.canMove ? "rgba(220, 20, 60, 0.06)" : "transparent";
+				ctx.lineWidth = 75;
+				ctx.moveTo(player.position.x, player.position.y - 200);
+				ctx.lineTo(player.position.x, player.position.y + 100);
+				ctx.stroke();
+				ctx.beginPath();
+				ctx.moveTo(player.position.x + 5, player.position.y + 200);
+				ctx.arc(player.position.x, player.position.y + 200, 5, 0, 2 * Math.PI);
+				ctx.stroke();
+				// m.energy = Math.max(0, Math.min(m.maxEnergy, m.energy));
+				if (tech.tachCondensation) {
+					for (let i = 0; i < mob.length; i++) {
+						if (Matter.Query.collides(player, [mob[i]]).length > 0) {
+							const dmg = Math.sqrt(m.dmgScale * Math.sqrt(player.speed));
+							mob[i].damage(dmg, true);
+							simulation.drawList.push({
+								x: mob[i].position.x,
+								y: mob[i].position.y,
+								radius: Math.abs(Math.log(dmg * player.speed) * 40 * mob[i].damageReduction + 3),
+								color: simulation.mobDmgColor,
+								time: simulation.drawTime
+							});
+							break
+						}
+					}
+				}
 				if (input.field && m.fieldCDcycle < m.cycle && this.canMove && m.energy > 0.2 && (player.velocity.x || player.velocity.y) && !this.haveEphemera) {
 					this.haveEphemera = true;
 					simulation.ephemera.push({
@@ -233,4 +262,41 @@ javascript:(function() {
 		index === self.findIndex((item) => item.name === obj.name)
 	);
 	m.fieldUpgrades = fieldArray;
+	const t = [
+		{
+			name: "tachyon condensation",
+			descriptionFunction() {
+				return `after <b>colliding</b> with mobs<br>deal <b class="color-d">damage</b> based on <b class="color-speed"">speed</b>`
+			},
+			isFieldTech: true,
+			maxCount: 1,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() {
+				return m.fieldMeterColor == "rgb(220, 20, 60)"
+			},
+			requires: "tachyonic field",
+			effect() {
+				tech.tachCondensation = true;
+			},
+			remove() {
+				tech.tachCondensation = false;
+			}
+		},		
+	];
+	t.reverse();
+	for(let i = 0; i < tech.tech.length; i++) {
+		if(tech.tech[i].name === 'reel') {
+			for(let j = 0; j < t.length; j++) {
+				tech.tech.splice(i + 1, 0, t[j]);
+			}
+			break;
+		}
+	}
+	const techArray = tech.tech.filter(
+		(obj, index, self) =>
+			index === self.findIndex((item) => item.name === obj.name)
+		);
+	tech.tech = techArray;
 })();
