@@ -287,6 +287,12 @@ javascript:(function() {
 	];
 	t.reverse();
 	for(let i = 0; i < tech.tech.length; i++) {
+		if(tech.tech[i].name === 'Newtons 1st law' || tech.tech[i].name === 'Newtons 2nd law') {
+			tech.tech[i].requires = "negative mass, grappling hook, tachyonic field"
+			tech.tech[i].allowed = () => {
+				return m.fieldMode === 3 || m.fieldMode === 10 || m.fieldMeterColor == "rgb(220, 20, 60)";
+			}
+		}
 		if(tech.tech[i].name === 'reel') {
 			for(let j = 0; j < t.length; j++) {
 				tech.tech.splice(i + 1, 0, t[j]);
