@@ -123,7 +123,7 @@ javascript:(function() {
 				ctx.restore();
 			}
 			m.hold = () => {
-				m.fieldFx = 1 + Math.abs(Math.log(m.coupling)) / 5;
+				m.fieldFx = 1 + Math.abs(Math.log(m.coupling + 1)) / 5;
 				m.setMovement();
 				m.hardLandCDScale = 0.5;
 				m.hardLanding = 16000;
