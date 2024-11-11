@@ -5,7 +5,7 @@ javascript:(function() {
 		canMove: false,
 		haveEphemera: false,
 		effect() {
-			m.fieldMeterColor = "rgb(220, 20, 60)";
+			m.fieldMeterColor = "#D12";
 			m.eyeFillColor = m.fieldMeterColor;
 			m.fillColor = m.fieldMeterColor;
 			m.fieldRegen = 0.002667;
@@ -14,6 +14,38 @@ javascript:(function() {
 				hue: 0,
 				sat: 5,
 				light: 100,
+			}
+			m.couplingDescription = (couple = m.coupling) => {
+				switch (m.fieldMode) {
+					case 0: //field emitter
+						return `<strong>all</strong> effects`
+					case 1: //standing wave
+						// return `<span style = 'font-size:95%;'><strong>deflecting</strong> condenses +${couple.toFixed(1)} <strong class='color-s'>ice IX</strong></span>`
+						return `+${(couple * 5).toFixed(0)} maximum <strong class='color-f'>energy</strong>`
+					case 2: //perfect diamagnetism
+						return `<span style = 'font-size:95%;'><strong>deflecting</strong> condenses ${(0.1 * couple).toFixed(2)} <strong class='color-s'>ice IX</strong></span>`
+					// return `<span style = 'font-size:89%;'><strong>invulnerable</strong> <strong>+${2*couple}</strong> seconds post collision</span>`
+					case 3: //negative mass
+						return `<strong>${(0.973 ** couple).toFixed(2)}x</strong> <strong class='color-defense'>damage taken</strong>`
+					case 4: //assembler
+						return `<strong>+${(0.6 * couple).toFixed(1)}</strong> <strong class='color-f'>energy</strong> per second`
+					case 5: //plasma
+						return `<strong>${(1 + 0.015 * couple).toFixed(3)}x</strong> <strong class='color-d'>damage</strong>`
+					case 6: //time dilation
+						return `<strong>+${(1 + 0.05 * couple).toFixed(2)}x</strong> longer <strong style='letter-spacing: 2px;'>stopped time</strong>` //<strong>movement</strong>, <strong>jumping</strong>, and 
+					case 7: //cloaking
+						// return `<strong>${(1 + 3.3 * couple).toFixed(3)}x</strong> ambush <strong class='color-d'>damage</strong>`
+						return `<strong>${(1 + 0.05 * couple).toFixed(3)}x</strong> ambush <strong class='color-d'>damage</strong>`
+					case 8: //pilot wave
+						return `<strong>${(1 + 0.05 * couple).toFixed(2)}x</strong> <strong class='color-block'>block</strong> collision <strong class='color-d'>damage</strong>`
+					case 9: //wormhole
+						return `<span style = 'font-size:89%;'>after eating <strong class='color-block'>blocks</strong> <strong>+${(2 * couple).toFixed(0)}</strong> <strong class='color-f'>energy</strong></span>`
+					case 10: //grappling hook
+						return `<span style="opacity: 1;">${powerUps.orb.ammo(1)}</span> give ${(4 * couple).toFixed(0)}% more ammo`
+				}
+				if(m.fieldMeterColor = "#D12") {
+					return `<strong>${(1 + Math.abs(Math.log(couple)) / 5).toFixed(2)}x</strong> movement <em class="color-s">speed</em>`
+				}
 			}
 			m.setFillColors();
 			m.draw = function () {
@@ -91,6 +123,8 @@ javascript:(function() {
 				ctx.restore();
 			}
 			m.hold = () => {
+				m.fieldFx = 1 + Math.abs(Math.log(m.coupling)) / 5;
+				m.setMovement();
 				m.hardLandCDScale = 0.5;
 				m.hardLanding = 16000;
 				m.isAltSkin = true;
@@ -274,7 +308,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() {
-				return m.fieldMeterColor == "rgb(220, 20, 60)"
+				return m.fieldMeterColor == "#D12"
 			},
 			requires: "tachyonic field",
 			effect() {
@@ -290,7 +324,7 @@ javascript:(function() {
 		if(tech.tech[i].name === 'Newtons 1st law' || tech.tech[i].name === 'Newtons 2nd law') {
 			tech.tech[i].requires = "negative mass, grappling hook, tachyonic field"
 			tech.tech[i].allowed = () => {
-				return m.fieldMode === 3 || m.fieldMode === 10 || m.fieldMeterColor == "rgb(220, 20, 60)";
+				return m.fieldMode === 3 || m.fieldMode === 10 || m.fieldMeterColor == "#D12";
 			}
 		}
 		if(tech.tech[i].name === 'reel') {
