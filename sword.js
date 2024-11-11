@@ -17,8 +17,62 @@ javascript:(function() {
 		angle2: 0,
 		released: false,
 		stabStatus: false,
+		haveEphemera: false,
 		fire() { },
 		do() {
+			if(!this.haveEphemera) {
+				this.haveEphemera = true;
+				simulation.ephemera.push({
+					name: "sword",
+					do() {
+						if(b.guns[b.activeGun].name !== 'sword') {
+							for (let i = 0, len = b.inventory.length; i < len; ++i) {
+								if(b.guns[b.inventory[i]].name === "sword" && b.guns[b.inventory[i]].sword) {
+									b.guns[b.inventory[i]].cycle = 0;
+									if(b.guns[b.inventory[i]].constraint1) {
+										Composite.remove(engine.world, b.guns[b.inventory[i]].constraint1);
+										b.guns[b.inventory[i]].constraint1 = undefined;
+									}
+									if(b.guns[b.inventory[i]].constraint2) {
+										Composite.remove(engine.world, b.guns[b.inventory[i]].constraint2);
+										b.guns[b.inventory[i]].constraint2 = undefined;
+									}
+									Composite.remove(engine.world, b.guns[b.inventory[i]].sword);
+									b.guns[b.inventory[i]].sword.parts.forEach(part => {
+										Composite.remove(engine.world, part);
+										const index = bullet.indexOf(part);
+										if (index !== -1) {
+											bullet.splice(index, 1);
+										}
+									});
+									b.guns[b.inventory[i]].sword = undefined;
+									b.guns[b.inventory[i]].bladeTrails = [];
+								}
+							}
+						}
+						if(b.guns[b.activeGun].name == 'sword' && tech.greatSword && b.guns[b.activeGun].sword) {
+							let bladeSegments = b.guns[b.activeGun].bladeSegments;
+							for(let i = 0; i < bladeSegments.length; i++) {
+								ctx.beginPath();
+								ctx.lineJoin = "miter";
+								ctx.miterLimit = 100;
+								ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : "crimson";
+								ctx.lineWidth = 5;
+								ctx.fillStyle = "black";
+								ctx.moveTo(bladeSegments[i].vertices[0].x, bladeSegments[i].vertices[0].y);
+								for(let j = 0; j < bladeSegments[i].vertices.length; j++) {
+									ctx.lineTo(bladeSegments[i].vertices[j].x, bladeSegments[i].vertices[j].y)
+								};
+								ctx.closePath();
+								ctx.stroke();
+								ctx.fill();
+								ctx.lineJoin = "round";
+								ctx.miterLimit = 10;
+							}
+						}
+					}
+				})
+			}
 			if(this.sword && this.cycle < 1) {
 				this.angle2 = Math.atan2(this.sword.position.y - m.pos.y, this.sword.position.x - m.pos.x);
 			}
@@ -56,7 +110,11 @@ javascript:(function() {
 			}
 			if (input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if (!this.sword && b.guns[b.activeGun].name === 'sword') {
-					({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
+					if(tech.greatSword) {
+						({ sword: this.sword, bladeSegments: this.bladeSegments} = this.greatSword());
+					} else {
+						({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
+					}
 					this.angle = m.angle;
 				}
 			}
@@ -105,16 +163,33 @@ javascript:(function() {
 							this.charge += 0.2;
 						}
 						const flashEffect = Math.sin((2 * Math.PI * this.cycle) / (50))
-						
-						ctx.beginPath()
-						if((this.charge / 10) >= 1 && flashEffect > 0) {
-							ctx.font = "lighter 150px serif";
-							ctx.textAlign = "center";
-							ctx.fillStyle = "black";
-							ctx.fillText("⚠", simulation.mouseInGame.x, simulation.mouseInGame.y + 75 / 2);
-						}
-						ctx.arc(simulation.mouseInGame.x, simulation.mouseInGame.y, 100, 0, Math.PI * 2 * (this.charge / 10));
+						const radius = 100;
+						ctx.beginPath();
+						ctx.lineWidth = 2;
+						ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+						ctx.arc(simulation.mouseInGame.x, simulation.mouseInGame.y, radius, 0, Math.PI * 2 * (this.charge / 10));
 						ctx.stroke();
+						if((this.charge / 10) >= 1 && flashEffect > 0) {
+							ctx.beginPath();
+							ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+							ctx.moveTo(simulation.mouseInGame.x, simulation.mouseInGame.y - radius);
+							ctx.lineTo(simulation.mouseInGame.x + radius, simulation.mouseInGame.y);
+							ctx.lineTo(simulation.mouseInGame.x, simulation.mouseInGame.y + radius);
+							ctx.lineTo(simulation.mouseInGame.x - radius, simulation.mouseInGame.y);
+							ctx.closePath();
+							ctx.fill();
+							
+							ctx.beginPath();
+							ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
+							ctx.lineWidth = 18;
+							ctx.moveTo(simulation.mouseInGame.x, simulation.mouseInGame.y - 75);
+							ctx.lineTo(simulation.mouseInGame.x, simulation.mouseInGame.y + 25);
+							ctx.stroke();
+							ctx.beginPath();
+							ctx.moveTo(simulation.mouseInGame.x + 5, simulation.mouseInGame.y + 70);
+							ctx.arc(simulation.mouseInGame.x, simulation.mouseInGame.y + 70, 5, 0, 2 * Math.PI);
+							ctx.stroke();
+						}
 					} else {
 						if(this.charge > 0) {
 							this.charge -= 0.5;
@@ -218,7 +293,11 @@ javascript:(function() {
 			}
 			if (input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if (!this.sword && b.guns[b.activeGun].name === 'sword') {
-					({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
+					if(tech.greatSword) {
+						({ sword: this.sword, bladeSegments: this.bladeSegments} = this.greatSword());
+					} else {
+						({ sword: this.sword, bladeSegments: this.bladeSegments} = this.createAndSwingSword());
+					}
 					this.angle = m.angle;
 				}
 			}
@@ -256,9 +335,9 @@ javascript:(function() {
 						this.sword.scale = newSize;
 					}
 					if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
-						Matter.Body.setAngularVelocity(this.sword, -Math.PI * 0.1);
+						Matter.Body.setAngularVelocity(this.sword, -Math.PI * 0.1 * (tech.greatSword ? 0.75 : 1));
 					} else {
-						Matter.Body.setAngularVelocity(this.sword, Math.PI * 0.1);
+						Matter.Body.setAngularVelocity(this.sword, Math.PI * 0.1 * (tech.greatSword ? 0.75 : 1));
 					}
 					if(tech.sizeIllusion) {
 						player.force.x += Math.cos(m.angle) * player.mass / 500;
@@ -268,7 +347,7 @@ javascript:(function() {
 						this.constraint = Constraint.create({
 							pointA: player.position,
 							bodyB: this.sword,
-							pointB: {x: -9, y: ((handle.position.y - this.sword.position.y))},
+							pointB: {x: (tech.greatSword ? -50 : -9), y: ((handle.position.y - this.sword.position.y))},
 							stiffness: (tech.infinityEdge ? 0.05 : 0.1),
 							damping: 0.001815,
 							length: 0,
@@ -279,7 +358,7 @@ javascript:(function() {
 						this.constraint = Constraint.create({
 							pointA: player.position,
 							bodyB: this.sword,
-							pointB: {x: 9, y: ((handle.position.y - this.sword.position.y))},
+							pointB: {x: (tech.greatSword ? 50 : 9), y: ((handle.position.y - this.sword.position.y))},
 							stiffness: (tech.infinityEdge ? 0.05 : 0.1),
 							damping: 0.001815,
 							length: 0,
@@ -398,6 +477,172 @@ javascript:(function() {
 
 			return { sword, bladeSegments };
 		},
+		greatSword(position = player.position) {
+			let x = position.x;
+			let y = position.y;
+			const handleWidth = 20;
+			const handleHeight = 120;
+
+			const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = handle;
+			handle.customName = "handle";
+			bullet[bullet.length - 1].do = () => {};
+
+			const pommelWidth = 30;
+			const pommelHeight = 40;
+			const pommelVertices = [
+				{ x: x, y: y + handleHeight / 2 + pommelHeight / 2 },
+				{ x: x + pommelWidth / 2, y: y + handleHeight / 2 },
+				{ x: x, y: y + handleHeight / 2 - pommelHeight / 2 },
+				{ x: x - pommelWidth / 2, y: y + handleHeight / 2 },
+			];
+			const pommel = Bodies.fromVertices(x, y + handleHeight / 2, pommelVertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = pommel;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const crossWidth = 50;
+			const crossHeight = 15;
+			const crossVertices = [
+				{ x: x + crossWidth, y: y },
+				{ x: x, y: y - crossHeight},
+				{ x: x - crossWidth, y: y },
+				{ x: x, y: y + crossHeight},
+			];
+			const cross = Bodies.fromVertices(x, y - handleHeight / 2, crossVertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = cross;
+			bullet[bullet.length - 1].do = () => {};
+
+			const leftOuterVertices = [
+				{ x: x, y: y - 95 },
+				{ x: x + 15, y: y - 120 },
+				{ x: x + 15, y: y },
+				{ x: x, y: y },
+			];
+			const leftOuter = Bodies.fromVertices(x + 15, y - handleHeight, leftOuterVertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = leftOuter;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const rightOuterVertices = [
+				{ x: x, y: y - 95 },
+				{ x: x - 15, y: y - 120 },
+				{ x: x - 15, y: y },
+				{ x: x, y: y },
+			];
+			const rightOuter = Bodies.fromVertices(x - 15, y - handleHeight, rightOuterVertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = rightOuter;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const cross2Width = 20;
+			const cross2Height = 30;
+			const cross2Vertices = [
+				{ x: x + cross2Width, y: y },
+				{ x: x, y: y - cross2Height},
+				{ x: x - cross2Width, y: y },
+				{ x: x, y: y + cross2Height},
+			];
+			const cross2 = Bodies.fromVertices(x, y - handleHeight - 95, cross2Vertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = cross2;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const leftHigherVertices = [
+				{ x: x, y: y + 95 },
+				{ x: x + 15, y: y + 120 },
+				{ x: x + 15, y: y },
+				{ x: x, y: y - 50 },
+			];
+			const leftHigher = Bodies.fromVertices(x + 15, y - handleHeight * 2 - 85, leftHigherVertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = leftHigher;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const rightHigherVertices = [
+				{ x: x, y: y + 95 },
+				{ x: x - 15, y: y + 120 },
+				{ x: x - 15, y: y },
+				{ x: x, y: y - 50 },
+			];
+			const rightHigher = Bodies.fromVertices(x - 15, y - handleHeight * 2 - 85, rightHigherVertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = rightHigher;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const decor1Vertices = [
+				{ x: x, y: y },
+				{ x: x + 10, y: y },
+				{ x: x + 40, y: y - 70},
+				{ x: x + 30, y: y - 70 },
+			];
+			const decor1 = Bodies.fromVertices(x + 30, y - handleHeight / 2 - 50, decor1Vertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = decor1;
+			bullet[bullet.length - 1].do = () => {};
+						
+			const decor2Vertices = [
+				{ x: x, y: y },
+				{ x: x - 10, y: y },
+				{ x: x - 80, y: y - 120},
+				{ x: x - 70, y: y - 120 },
+			];
+			const decor2 = Bodies.fromVertices(x + 10, y - handleHeight / 2 - 150, decor2Vertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = decor2;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const decor3Vertices = [
+				{ x: x, y: y },
+				{ x: x + 10, y: y },
+				{ x: x + 40, y: y - 70},
+				{ x: x + 40, y: y - 80 },
+			];
+			const decor3 = Bodies.fromVertices(x - 10, y - handleHeight / 2 - 247, decor3Vertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = decor3;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const decor4Vertices = [
+				{ x: x, y: y + 6},
+				{ x: x - 10, y: y + 6 },
+				{ x: x - 40, y: y - 70},
+				{ x: x - 30, y: y - 70 },
+			];
+			const decor4 = Bodies.fromVertices(x - 30, y - handleHeight / 2 - 47, decor4Vertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = decor4;
+			bullet[bullet.length - 1].do = () => {};
+						
+			const decor5Vertices = [
+				{ x: x, y: y },
+				{ x: x + 10, y: y },
+				{ x: x + 80, y: y - 120},
+				{ x: x + 70, y: y - 120 },
+			];
+			const decor5 = Bodies.fromVertices(x - 10, y - handleHeight / 2 - 150, decor5Vertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = decor5;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const decor6Vertices = [
+				{ x: x, y: y },
+				{ x: x - 10, y: y },
+				{ x: x - 35, y: y - 70},
+				{ x: x - 35, y: y - 80 },
+			];
+			const decor6 = Bodies.fromVertices(x + 12, y - handleHeight / 2 - 246, decor6Vertices, spawn.propsIsNotHoldable);
+			bullet[bullet.length] = decor6;
+			bullet[bullet.length - 1].do = () => {};
+			
+			const sword = Body.create({
+				parts: [handle, leftOuter, rightOuter, rightHigher, decor1, decor2, decor3, leftHigher, decor4, decor5, decor6, pommel, cross, cross2],
+			});
+
+			Composite.add(engine.world, sword);
+			Matter.Body.setPosition(sword, { 
+				x: x, 
+				y: y
+			});
+			Matter.Body.setVelocity(sword, { 
+				x: 0, 
+				y: 0
+			});
+			sword.collisionFilter.category = cat.bullet;
+			sword.collisionFilter.mask = cat.mobBullet | cat.powerup | cat.mob | cat.body;
+			Body.scale(sword, -1, 1, { x, y });
+
+			return { sword, bladeSegments: [rightOuter, rightHigher, decor1, decor4, leftOuter, decor2, decor3, leftHigher, decor5, decor6, pommel, cross, cross2] };
+        },
 		renderDefault() {
 			if(this.sword) {
 				for (let i = 0; i < this.bladeSegments.length; i++) {
@@ -441,22 +686,24 @@ javascript:(function() {
 						ctx.fill();
 					}
 				}
-				for(let i = 0; i < this.bladeSegments.length; i++) {
-					ctx.beginPath();
-					ctx.lineJoin = "miter";
-					ctx.miterLimit = 100;
-					ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : tech.isAmmoSword ? "#c0c0c0" : "crimson";
-					ctx.lineWidth = 5;
-					ctx.fillStyle = "black";
-					ctx.moveTo(this.bladeSegments[i].vertices[0].x, this.bladeSegments[i].vertices[0].y);
-					for(let j = 0; j < this.bladeSegments[i].vertices.length; j++) {
-						ctx.lineTo(this.bladeSegments[i].vertices[j].x, this.bladeSegments[i].vertices[j].y)
-					};
-					ctx.closePath();
-					ctx.stroke();
-					ctx.fill();
-					ctx.lineJoin = "round";
-					ctx.miterLimit = 10;
+				if(!tech.greatSword) {
+					for(let i = 0; i < this.bladeSegments.length; i++) {
+						ctx.beginPath();
+						ctx.lineJoin = "miter";
+						ctx.miterLimit = 100;
+						ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : tech.isAmmoSword ? "#c0c0c0" : "crimson";
+						ctx.lineWidth = 5;
+						ctx.fillStyle = "black";
+						ctx.moveTo(this.bladeSegments[i].vertices[0].x, this.bladeSegments[i].vertices[0].y);
+						for(let j = 0; j < this.bladeSegments[i].vertices.length; j++) {
+							ctx.lineTo(this.bladeSegments[i].vertices[j].x, this.bladeSegments[i].vertices[j].y)
+						};
+						ctx.closePath();
+						ctx.stroke();
+						ctx.fill();
+						ctx.lineJoin = "round";
+						ctx.miterLimit = 10;
+					}
 				}
 			}
 		},
@@ -549,7 +796,7 @@ javascript:(function() {
 			if(this.sword) {
 				for (let i = 0; i < mob.length; i++) {
 					if (Matter.Query.collides(this.sword, [mob[i]]).length > 0) {
-						const dmg = m.dmgScale * Math.sqrt(this.sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1) * (tech.infinityEdge ? 1.1 : 1);
+						const dmg = m.dmgScale * Math.sqrt(this.sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1) * (tech.infinityEdge ? 1.1 : 1) * (tech.greatSword ? 5 : 1);
 						if(!tech.soundSword) {
 							if(m.health < m.maxHealth) {
 								if(tech.isEnergyHealth) {
@@ -575,7 +822,7 @@ javascript:(function() {
 							color: (tech.soundSword ? "rgba(0, 0, 0, 0.3)": simulation.mobDmgColor),
 							time: simulation.drawTime
 						});
-						if(!tech.soundSword) {
+						if(!tech.soundSword && !tech.greatSword) {
 							const angle = Math.atan2(mob[i].position.y - this.sword.position.y, mob[i].position.x - this.sword.position.x);
 							this.sword.force.x -= Math.cos(angle) * 10;
 							this.sword.force.y -= Math.sin(angle) * 10;
@@ -646,7 +893,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword") && !tech.isStabSword
+				return tech.haveGunCheck("sword") && !tech.isStabSword && !tech.greatSword
 			},
 			requires: "sword, not silicon carbide",
 			effect() {
@@ -667,7 +914,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword")
+				return tech.haveGunCheck("sword") && !tech.greatSword
 			},
 			requires: "sword",
 			effect() {
@@ -675,6 +922,33 @@ javascript:(function() {
 			},
 			remove() {
 				tech.soundSword = false;
+			}
+		},		
+		{
+			name: "greatsword",
+			descriptionFunction() {
+				return `<b>5x</b> sword <b class="color-d">damage</b> and <b>sword</b> swings <b>0.75x</b> slower<br><b>change</b> sword <b>appearance</b>`
+			},
+			isGunTech: true,
+			maxCount: 1,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() { 
+				return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword
+			},
+			requires: "sword, not plasmon, canton's theorem",
+			effect() {
+				tech.greatSword = true;
+			},
+			remove() {
+				tech.greatSword = false;
+				for (let i = 0, len = b.inventory.length; i < len; ++i) {
+					if(b.guns[b.inventory[i]].name === "sword" && !m.alive) {
+						b.guns[b.inventory[i]].cycle = 0;
+						b.guns[b.inventory[i]].haveEphemera = false;
+					}
+				}
 			}
 		},
 	];
@@ -687,7 +961,6 @@ javascript:(function() {
 			break;
 		}
 	}
-	tech.tech.push()
 	const techArray = tech.tech.filter(
 		(obj, index, self) =>
 			index === self.findIndex((item) => item.name === obj.name)
