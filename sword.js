@@ -326,6 +326,7 @@ javascript:(function() {
 					this.constraint = undefined;
 				}
 				this.bladeTrails = [];
+				this.bladeSegments = undefined;
 				m.fireCDcycle = m.cycle + 10;
 			} else {
 				if (this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
@@ -388,6 +389,7 @@ javascript:(function() {
 						this.constraint = undefined;
 					}
 					this.bladeTrails = [];
+					this.bladeSegments = undefined;
 					m.fireCDcycle = 0;
 				}
 			}
@@ -756,6 +758,43 @@ javascript:(function() {
 		},		
 		renderLongsword() {
 			if(this.sword) {
+				for (let i = 0; i < this.bladeSegments.length; i++) {
+					const blade = this.bladeSegments[i];
+					const trail = this.bladeTrails[i] || [];
+					const tip = blade.vertices[1];
+					const base = blade.vertices[blade.vertices.length - 2];
+
+					trail.push({ tip: { x: tip.x, y: tip.y }, base: { x: base.x, y: base.y } });
+
+					if (trail.length > 15) {
+						trail.shift();
+					}
+
+					this.bladeTrails[i] = trail;
+				}
+				for (let i = 0; i < this.bladeTrails.length; i++) {
+					const trail = this.bladeTrails[i];
+					if (this.bladeTrails[2] != trail) continue;
+					ctx.save();
+					ctx.beginPath();
+					const gradient = ctx.createLinearGradient(
+						trail[0].tip.x, trail[0].tip.y, 
+						trail[trail.length - 1].tip.x, trail[trail.length - 1].tip.y
+					);
+					gradient.addColorStop(0, "rgba(180, 0, 220, 0)");
+					gradient.addColorStop(1, "rgba(220, 220, 220, 1)");
+					ctx.fillStyle = gradient;
+					ctx.moveTo(trail[0].tip.x, trail[0].tip.y);
+					for (let j = 1; j < trail.length; j++) {
+						ctx.lineTo(trail[j].tip.x, trail[j].tip.y);
+					}
+					for (let j = trail.length - 1; j >= 0; j--) {
+						ctx.lineTo(trail[j].base.x, trail[j].base.y);
+					}
+					ctx.closePath();
+					ctx.fill();
+					ctx.restore();
+				}
 				for(let i = 0; i < this.bladeSegments.length; i++) {
 					ctx.save();
 					ctx.beginPath();
@@ -792,43 +831,6 @@ javascript:(function() {
 					};
 					ctx.closePath();
 					ctx.fill();
-					ctx.stroke();
-					ctx.restore();
-				}
-				for (let i = 0; i < this.bladeSegments.length; i++) {
-					const blade = this.bladeSegments[i];
-					const trail = this.bladeTrails[i] || [];
-					const tip = blade.vertices[0];
-					trail.push({ x: tip.x, y: tip.y });
-					if (trail.length > 20) {
-						trail.shift();
-					}
-					this.bladeTrails[i] = trail;
-				}
-
-				for (let i = 0; i < this.bladeTrails.length; i++) {
-					const trail = this.bladeTrails[i];
-
-					if (trail.length < 2) continue;
-					ctx.save();
-					ctx.beginPath();
-
-					const gradient = ctx.createLinearGradient(
-						trail[0].x, trail[0].y, 
-						trail[trail.length - 1].x, trail[trail.length - 1].y
-					);
-					gradient.addColorStop(0, "rgba(180, 0, 220, 0)");
-					gradient.addColorStop(1, "rgba(180, 0, 220, 1)");
-
-					ctx.strokeStyle = gradient;
-					ctx.lineWidth = 8;
-					ctx.moveTo(trail[0].x, trail[0].y);
-					for (let j = 1; j < trail.length - 1; j++) {
-						const cpX = (trail[j].x + trail[j + 1].x) / 2;
-						const cpY = (trail[j].y + trail[j + 1].y) / 2;
-						ctx.quadraticCurveTo(trail[j].x, trail[j].y, cpX, cpY);
-					}
-
 					ctx.stroke();
 					ctx.restore();
 				}
