@@ -274,18 +274,22 @@ javascript:(function() {
 				}
 				
 				if (m.isHolding) {
-                    m.drawHold(m.holdingTarget);
-                    m.holding();
-                    m.throwBlock();
-                } else if ((input.field && m.fieldCDcycle < m.cycle)) {
-                    if (m.energy > m.fieldRegen) m.energy -= m.fieldRegen
-                    m.grabPowerUp();
-                    m.lookForPickUp();
-                } else if (m.holdingTarget && m.fieldCDcycle < m.cycle) {
-                    m.pickUp();
-                } else {
-                    m.holdingTarget = null;
-                }
+				    m.drawHold(m.holdingTarget);
+				    m.holding();
+				    m.throwBlock();
+				} else if ((input.field && m.fieldCDcycle < m.cycle)) {
+				    if (m.energy > m.fieldRegen) m.energy -= m.fieldRegen
+				    m.grabPowerUp();
+				    if(typeof m.lookForPickUp == 'function') { //lookForPickUp is changed in newer versions to lookForBlock
+					    m.lookForPickUp(); 
+				    } else {
+					    m.lookForBlock();
+				    }
+				} else if (m.holdingTarget && m.fieldCDcycle < m.cycle) {
+				    m.pickUp();
+				} else {
+				    m.holdingTarget = null;
+				}
 				m.drawRegenEnergy()
 			}
 		},
