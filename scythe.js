@@ -288,7 +288,7 @@ javascript:(function() {
 						if(tech.durabilityScythe) {
 							this.durability--;
 						}
-						const dmg = m.dmgScale * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : 1) * (tech.scytheRange ? tech.scytheRange * 1.15 : 1) * (tech.isDoubleScythe ? 0.9 : 1) * (tech.scytheRad ? tech.scytheRad * 1.5 : 1);
+						const dmg = (m.damageDone ? m.damageDone : m.dmgScale) * 0.12 * 2.73 * (tech.isLongBlade ? 1.3 : 1) * (tech.scytheRange ? tech.scytheRange * 1.15 : 1) * (tech.isDoubleScythe ? 0.9 : 1) * (tech.scytheRad ? tech.scytheRad * 1.5 : 1);
 						mob[i].damage(dmg, true);
 						simulation.drawList.push({
 							x: mob[i].position.x,
