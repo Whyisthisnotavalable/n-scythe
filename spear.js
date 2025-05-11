@@ -134,7 +134,7 @@ javascript:(function() {
 			//this.drawDurability();
 			if(tech.pyroSpear && this.spear) {
 				const range = 500 + 140 * Math.sin(simulation.cycle / 100);
-				const dmg = 0.03 * m.dmgScale;
+				const dmg = 0.03 * (m.damageDone ? m.damageDone : m.dmgScale);
 				for (let i = 0; i < mob.length; i++) {
 					const distance = Vector.magnitude(Vector.sub(this.spear.position, mob[i].position))
 					if (distance < range) {
@@ -162,7 +162,7 @@ javascript:(function() {
 				this.renderDefault();
 			}
 			if(tech.spearArc && this.spear) {
-				const dmg = 0.0001 * m.dmgScale;
+				const dmg = 0.0001 * (m.damageDone ? m.damageDone : m.dmgScale);
 				const arcList = [];
 				const damageRadius = 1000;
 				const dischargeRange = 1700;
@@ -593,7 +593,7 @@ javascript:(function() {
 			if(this.spear) {
 				for (let i = 0; i < mob.length; i++) {
 					if (Matter.Query.collides(this.spear, [mob[i]]).length > 0) {
-						const dmg = Math.sqrt(m.dmgScale * Math.sqrt(this.spear.speed)) * (tech.spearEye ? (m.health > 0.01 ? 3 : 1) : 1);
+						const dmg = Math.sqrt((m.damageDone ? m.damageDone : m.dmgScale) * Math.sqrt(this.spear.speed)) * (tech.spearEye ? (m.health > 0.01 ? 3 : 1) : 1);
 						mob[i].damage(dmg, true);
 						simulation.drawList.push({
 							x: mob[i].position.x,
@@ -802,7 +802,7 @@ javascript:(function() {
 										x: 7.5 * Math.cos(angle - Math.PI / 2),
 										y: 7.5 * Math.sin(angle - Math.PI / 2)
 									}
-									const dmg = this.radius * m.dmgScale;
+									const dmg = this.radius * (m.damageDone ? m.damageDone : m.dmgScale);
 									const where = {
 										x: spearPos.x + 30 * Math.cos(angle),
 										y: spearPos.y + 30 * Math.sin(angle)
@@ -959,7 +959,7 @@ javascript:(function() {
 							if (best.who.alive) {
 								best.who.locatePlayer();
 								if (best.who.damageReduction) {
-									best.who.damage(charge * 0.005 * m.dmgScale);
+									best.who.damage(charge * 0.005 * (m.damageDone ? m.damageDone : m.dmgScale));
 								}
 							}
 						}
