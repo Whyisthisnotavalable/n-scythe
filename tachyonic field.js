@@ -169,7 +169,7 @@ javascript:(function() {
 				if (tech.tachCondensation) {
 					for (let i = 0; i < mob.length; i++) {
 						if (Matter.Query.collides(player, [mob[i]]).length > 0) {
-							const dmg = Math.sqrt(m.dmgScale * Math.sqrt(player.speed));
+							const dmg = Math.sqrt((m.damageDone ? m.damageDone : m.dmgScale) * Math.sqrt(player.speed));
 							mob[i].damage(dmg, true);
 							simulation.drawList.push({
 								x: mob[i].position.x,
