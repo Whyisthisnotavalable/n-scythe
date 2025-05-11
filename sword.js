@@ -925,7 +925,7 @@ javascript:(function() {
 			if(this.sword) {
 				for (let i = 0; i < mob.length; i++) {
 					if (Matter.Query.collides(this.sword, [mob[i]]).length > 0) {
-						const dmg = m.dmgScale * Math.sqrt(this.sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1) * (tech.infinityEdge ? 1.1 : 1) * (tech.greatSword ? 2 : 1) * (tech.longSword ? 1.7 : 1);
+						const dmg = (m.damageDone ? m.damageDone : m.dmgScale) * Math.sqrt(this.sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1) * (tech.infinityEdge ? 1.1 : 1) * (tech.greatSword ? 2 : 1) * (tech.longSword ? 1.7 : 1);
 						if(!tech.soundSword) {
 							if(m.health < m.maxHealth) {
 								if(tech.isEnergyHealth) {
