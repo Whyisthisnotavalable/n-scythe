@@ -4,7 +4,8 @@ javascript:(function() {
         { name: 'Sword', url: 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/sword.js' },
         { name: 'Spear', url: 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/spear.js' },
         { name: 'Tachyonic Field', url: 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/refs/heads/main/tachyonic%20field.js' },
-        { name: 'Minimap', url: 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/minmap.js' }
+        { name: 'Minimap', url: 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/minmap.js' },
+        { name: 'Harpoon bot', url: 'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/harpoon.js' }
     ];
     const container = document.createElement('div');
     container.id = 'scriptLoaderContainer';
