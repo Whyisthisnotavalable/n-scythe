@@ -147,7 +147,7 @@ javascript:(function() {
 				if (this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 					if(tech.infinityEdge) {
 						const newSize = Math.sqrt(0.5 * m.health) + 1;
-						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), handle.position);
+						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), this.sword.position);
 						this.sword.scale = newSize;
 					}
 					let handle;
@@ -332,7 +332,7 @@ javascript:(function() {
 				if (this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 					if(tech.infinityEdge) {
 						const newSize = Math.sqrt(0.5 * m.health) + 1;
-						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), handle.position);
+						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), this.sword.position);
 						this.sword.scale = newSize;
 					}
 					if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
