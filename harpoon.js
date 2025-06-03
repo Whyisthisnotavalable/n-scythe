@@ -50,7 +50,7 @@ javascript:(function(){
                                     const angle = Math.atan2(mob[i].position.y - this.position.y, mob[i].position.x - this.position.x)
                                     const unit = Vector.normalise(Vector.sub(Vector.add(mob[i].position, Vector.mult(mob[i].velocity, Math.sqrt(dist) / 60)), this.position))
                                     if (this.isUpgraded) {
-                                        b.botHarpoon(this.position, mob[i], angle, 1, true, 15, false, 0.12, this)
+                                        b.botHarpoon(this.position, mob[i], angle, 1, true, 12, false, 0.09, this)
                                         this.force = Vector.mult(unit, -0.02 * this.mass)
                                     } else {
                                         b.botHarpoon(this.position, mob[i], angle, 1, true, 10, false, 0.08, this)
@@ -72,7 +72,7 @@ javascript:(function(){
                                     const angle = Math.atan2(powerUp[i].position.y - this.position.y, powerUp[i].position.x - this.position.x)
                                     const unit = Vector.normalise(Vector.sub(Vector.add(powerUp[i].position, Vector.mult(powerUp[i].velocity, Math.sqrt(dist) / 60)), this.position))
                                     if (this.isUpgraded) {
-                                        b.botHarpoon(this.position, powerUp[i], angle, 1, true, 15, false, 0.2, this)
+                                        b.botHarpoon(this.position, powerUp[i], angle, 1, true, 12, false, 0.09, this)
                                         this.force = Vector.mult(unit, -0.02 * this.mass)
                                     } else {
                                         b.botHarpoon(this.position, powerUp[i], angle, 1, true, 10, false, 0.08, this)
@@ -202,7 +202,7 @@ javascript:(function(){
                             this.foamSpawned++
                         }
                     }
-                    if (tech.isHarpoonPowerUp && simulation.cycle - 480 < tech.harpoonPowerUpCycle) {
+                    if (tech.isHarpoonBotUpgrade) {
                         Matter.Body.setDensity(this, 1.8 * tech.harpoonDensity); //+90% damage after pick up power up for 8 seconds
                     } else if (tech.isHarpoonFullHealth && who.health === 1) {
                         Matter.Body.setDensity(this, 2.2 * tech.harpoonDensity); //+90% damage if mob has full health do
@@ -288,10 +288,10 @@ javascript:(function(){
                     ctx.lineJoin = "miter"
                     ctx.miterLimit = 20;
                     ctx.lineWidth = 15;
-                    ctx.strokeStyle = "rgba(255,0,100,0.25)";
+                    ctx.strokeStyle = "rgba(100, 0, 255, 0.25)";
                     ctx.stroke();
                     ctx.lineWidth = 4;
-                    ctx.strokeStyle = `#f07`;
+                    ctx.strokeStyle = `#70f`;
                     ctx.stroke();
                     ctx.lineJoin = "round"
                     ctx.miterLimit = 5
@@ -336,17 +336,17 @@ javascript:(function(){
                             // }
                         }
                     } else {
-                        const sub = Vector.sub(this.position, m.pos)
+                        const sub = Vector.sub(this.position, bot.position)
                         const rangeScale = 1 + 0.000001 * Vector.magnitude(sub) * Vector.magnitude(sub) //return faster when far from player
                         const returnForce = Vector.mult(Vector.normalise(sub), rangeScale * thrust * this.mass)
-                        if (m.energy > this.drain) m.energy -= this.drain
-                        if (m.energy < 0.05) {
-                            this.force.x -= returnForce.x * 0.15
-                            this.force.y -= returnForce.y * 0.15
-                        } else { //if (m.cycle + 20 * b.fireCDscale < m.fireCDcycle)
+                        // if (m.energy > this.drain) m.energy -= this.drain
+                        // if (m.energy < 0.05) {
+                        //     this.force.x -= returnForce.x * 0.15
+                        //     this.force.y -= returnForce.y * 0.15
+                        // } else { //if (m.cycle + 20 * b.fireCDscale < m.fireCDcycle)
                             this.force.x -= returnForce.x
                             this.force.y -= returnForce.y
-                        }
+                        // }
                         this.grabPowerUp()
                     }
                     this.draw();
@@ -386,8 +386,8 @@ javascript:(function(){
                                 Matter.Sleeping.set(this, false)
                                 this.endCycle = simulation.cycle + 240
                                 const momentum = Vector.mult(Vector.sub(this.velocity, player.velocity), (m.crouch ? 0.00015 : 0.0003)) //recoil on jerking line
-                                player.force.x += momentum.x
-                                player.force.y += momentum.y
+                                bot.force.x += momentum.x
+                                bot.force.y += momentum.y
                                 requestAnimationFrame(() => { //delay this for 1 cycle to get the proper hit graphics
                                     this.collisionFilter.category = 0
                                     this.collisionFilter.mask = 0
@@ -425,7 +425,7 @@ javascript:(function(){
                     this.draw();
                 }
             }
-            if (tech.isHarpoonPowerUp && simulation.cycle - 480 < tech.harpoonPowerUpCycle) { //8 seconds
+            if (tech.isHarpoonBotUpgrade) {
                 if (isReturn) {
                     bullet[me].draw = function () {
                         this.drawDamageAura()
@@ -452,7 +452,7 @@ javascript:(function(){
 				return `construct a <strong class='color-bot'>bot</strong> that fires <strong>harpoons</strong> at mobs<br>collects nearby <b>power ups</b>`
 			},
 			isGunTech: false,
-			maxCount: 1,
+			maxCount: 9,
 			count: 0,
 			frequency: 1,
             frequencyDefault: 1,
@@ -464,29 +464,30 @@ javascript:(function(){
 			requires: "",
 			effect() {
                 b.harpoonBot();
-                tech.harpoonBot = true;
-				simulation.ephemera.push({
-                    name: "harpoonBot",
-                    do() {
-                        if (simulation.cycle % 250 === 0) {
-                            let harpoonFound = false;
-
-                            for (let i = 0; i < bullet.length; i++) {
-                            if (bullet[i].botType === "harpoon") {
-                                harpoonFound = true;
-                                break; 
-                            }
-                            }
-
-                            if (!harpoonFound) {
-                            b.harpoonBot();
+                tech.harpoonBot += 1;
+                if(!this.count) {
+                    simulation.ephemera.push({
+                        name: "harpoonBot",
+                        do() {
+                            if (simulation.cycle % 250 === 0) {
+                                let harpoonFound = 0;
+                                for (let i = 0; i < bullet.length; i++) {
+                                    if (bullet[i].botType === "harpoon") {
+                                        harpoonFound++;
+                                    }
+                                }
+                                if (harpoonFound < tech.harpoonBot) {
+                                    for(let i = 0; i < tech.harpoonBot - harpoonFound; i++) {
+                                        b.harpoonBot();
+                                    }
+                                }
                             }
                         }
-                    }
-                })
+                    })
+                }
 			},
 			remove() {
-                tech.harpoonBot = false;
+                tech.harpoonBot = 0;
 				simulation.removeEphemera("harpoonBot")
 			}
 		},
