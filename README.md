@@ -2,6 +2,9 @@
 
 <img src="https://github.com/user-attachments/assets/7a53a96d-b038-4f01-934b-27d54968621d" alt="n-scythe logo" width="150" style="border-radius:8px;display:block;margin:0 auto">  
 
+## Warning
+Weapon mods are not compatable with the multiplayer mod. <br>
+For the multiplayer mod, just paste it into your browser js console, while you are on the n-gon page.
 
 ### Install
 Run this bookmarklet while on n-gon to load the mod:  
