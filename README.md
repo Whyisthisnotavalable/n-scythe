@@ -3,12 +3,23 @@
 <img src="https://github.com/user-attachments/assets/7a53a96d-b038-4f01-934b-27d54968621d" alt="n-scythe logo" width="150" style="border-radius:8px;display:block;margin:0 auto">  
 
 ## Warning
-The multiplayer mod is not very polished, but is in a semi-working state. <br>
-Weapon mods are not compatable with the multiplayer mod. <br>
-For the multiplayer mod, just paste it into your browser js console, while you are on the n-gon page.
+The multiplayer mod is currently **semi-working** and **not fully polished**.<br>
+Weapon mods are **not compatible** with the multiplayer mod.<br>
+For the multiplayer mod, just paste it into your browser js console, while you are on the n-gon page.<br>
+Alternatively, you can run this bookmarklet, which does the same thing:
+```javascript
+javascript:var r=new XMLHttpRequest();r.open("GET",'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/multiplayer.js',true);r.onloadend=function(oEvent){new Function(r.responseText)();};r.send();
+```
+
+<details>
+  <summary>Click to expand</summary>
+  
+> **Note:** The code is currently minimized for faster loading and to protect the project’s source while it’s in development.  
+> A readable version will be published later.
+</details> 
 
 ### Install
-Run this bookmarklet while on n-gon to load the mod:  
+Run this bookmarklet while on n-gon to load weapon mods:  
 
 ```javascript
 javascript:var r=new XMLHttpRequest();r.open("GET",'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/loader.js',true);r.onloadend=function(oEvent){new Function(r.responseText)();};r.send();
