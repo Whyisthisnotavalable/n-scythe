@@ -11,13 +11,6 @@ Alternatively, you can run this bookmarklet, which does the same thing:
 javascript:var r=new XMLHttpRequest();r.open("GET",'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/multiplayer.js',true);r.onloadend=function(oEvent){new Function(r.responseText)();};r.send();
 ```
 
-<details>
-  <summary>Click to expand</summary>
-  
-> **Note:** The code is currently minimized for faster loading and to protect the project’s source while it’s in development.  
-> A readable version will be published later.
-</details> 
-
 ### Install
 Run this bookmarklet while on n-gon to load weapon mods:  
 
