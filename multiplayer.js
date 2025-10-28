@@ -172,6 +172,7 @@ function initP2P() {
             hole: 0x21,
             rewind: 0x22,
             molecular_mode: 0x23,
+            player_skin: 0x24,
 
             block_create: 0x35,
             block_update: 0x36,
@@ -417,6 +418,15 @@ function initP2P() {
                     }
                     case protocol.player_username_request: {
                         sendUsernameUpdate();
+                        break;
+                    }
+                    case protocol.player_skin: {
+                        const [nameLength, offset1] = BinaryProtocol.readUint8(view, offset);
+                        const nameBytes = new Uint8Array(view.buffer, offset1, nameLength);
+                        const skinName = new TextDecoder().decode(nameBytes);
+                        if (remotePlayers[senderId]) {
+                            remotePlayers[senderId].skin[skinName]();
+                        }
                         break;
                     }
                     case protocol.hole: {
@@ -1076,6 +1086,30 @@ function initP2P() {
                 sendData(buffer);
             }
         }
+        const skinHooks = {};
+        for (const [name, fn] of Object.entries(m.skin)) {
+            skinHooks[name] = fn;
+            m.skin[name] = function(...args) {
+                const result = fn.apply(this, args);
+                window.lastUsedSkin = name;
+                sendSkin(name);
+                return result;
+            };
+        }
+        function sendSkin(skinName) {
+            const encoder = new TextEncoder();
+            const nameBytes = encoder.encode(skinName);
+
+            const buffer = new ArrayBuffer(3 + nameBytes.length);
+            const view = new DataView(buffer);
+
+            let offset = BinaryProtocol.writeUint8(view, 0, protocol.player_skin);
+            offset = BinaryProtocol.writeUint8(view, offset, clientId);
+            offset = BinaryProtocol.writeUint8(view, offset, nameBytes.length);
+            new Uint8Array(buffer, offset).set(nameBytes);
+
+            sendData(buffer);
+        }
         function sendRewind() {
             if(m.fieldMode == 6) {
                 const buffer = new ArrayBuffer(4);
@@ -1489,7 +1523,7 @@ function initP2P() {
             validateUsernames();
 
             simulation.ephemera.push({
-                name: "personal best", //21.45
+                name: "personal best", //20.19
                 do() {
                     if(m.isTimeDilated) {
                         for(const id in remotePlayers) {
@@ -4848,7 +4882,7 @@ function initP2P() {
 								me.yOffGoal = me.yOffWhen.crouch;
 							}
 						} else {
-							const momentum = player.velocity.y * player.mass;
+							const momentum = me.velocity.y * me.mass;
 							if (momentum > me.hardLanding) {
 								me.doCrouch();
 								me.yOff = me.yOffWhen.jump;
@@ -4856,7 +4890,7 @@ function initP2P() {
 									me.cycle +
 									me.hardLandCDScale * Math.min(momentum / 6.5 - 6, 40);
 								if (
-									tech.isFallingDamage &&
+									me.tech.isFallingDamage &&
 									me.immuneCycle < me.cycle &&
 									momentum > 150
 								) {
@@ -5162,6 +5196,1533 @@ function initP2P() {
 					ctx.restore();
 				};
 			};
+            me.skin = {
+                none() {
+                    me.isAltSkin = true
+                },
+                favicon() { //used to render the favicon, not actually in game
+                    me.yOffWhen.jump = 70
+                    me.yOffWhen.stand = 49
+                    me.yOffWhen.crouch = 22
+                    me.isAltSkin = false
+
+                    me.fillColor = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light}%)`
+                    me.fillColorDark = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light - 10}%)`
+                    let grd = ctx.createLinearGradient(-30, 0, 30, 0);
+                    grd.addColorStop(0, me.fillColorDark);
+                    grd.addColorStop(1, me.fillColor);
+                    me.bodyGradient = grd
+
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        // me.calcLeg(Math.PI, -3);
+                        // me.drawLeg("#4a4a4a");
+                        // me.calcLeg(0, 0);
+                        // me.drawLeg("#333");
+                        // ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(12, 0, 4.5, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 4.5;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                },
+                egg() {
+                    me.isAltSkin = true
+                    me.yOffWhen.stand = 52
+                    me.yOffWhen.jump = 72
+                    me.squirrelJump = 1.15;
+                    me.setMovement()
+
+                    me.draw = function () {
+                        if (powerUps.boost.endCycle > simulation.cycle) {
+                            //gel that acts as if the wind is blowing it when player moves
+                            ctx.save();
+                            ctx.translate(me.pos.x, me.pos.y);
+                            me.velocitySmooth = Vector.add(Vector.mult(me.velocitySmooth, 0.8), Vector.mult(player.velocity, 0.2))
+                            ctx.rotate(Math.atan2(me.velocitySmooth.y, me.velocitySmooth.x))
+                            ctx.beginPath();
+                            const radius = 39
+                            const mag = 14 * Vector.magnitude(me.velocitySmooth) + radius
+                            ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                            ctx.bezierCurveTo(-radius, radius, -radius, 0, -mag, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                            ctx.bezierCurveTo(-radius, 0, -radius, -radius, 0, -radius);
+
+                            // const time = (powerUps.boost.endCycle - me.cycle) / powerUps.boost.duration
+                            const time = Math.min(0.5, (powerUps.boost.endCycle - simulation.cycle) / powerUps.boost.duration)
+
+                            ctx.fillStyle = `rgba(0,0,0,${0.04 + 0.3 * time})`
+                            ctx.fill()
+                            // ctx.strokeStyle = "#333"
+                            // ctx.lineWidth = 1
+                            // ctx.stroke();
+                            ctx.restore();
+                        }
+
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -1.25);
+                        me.drawLeg("#606060");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#444");
+
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        // ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.ellipse(0, 0, 0.9 * 31, 1.05 * 31, 0, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        // ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.ellipse(15, 0, 0.8 * 4, 1.1 * 4, 0, 0, 2 * Math.PI);
+
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.75 + me.yOffGoal * 0.25; //smoothly move leg height towards height goal
+                    }
+                    me.drawLeg = function (stroke) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        const hip = { x: me.hip.x - 5, y: me.hip.y + 5 }
+                        const sub = Vector.sub(me.knee, hip)
+                        const off = Vector.mult(Vector.rotate(Vector.normalise(sub), Math.PI / 2), 8)
+                        const kneeBraceHigh = Vector.add(hip, off)
+                        const kneeBraceLow = Vector.add(kneeBraceHigh, Vector.mult(sub, 0.9))
+                        const foot = { x: me.foot.x - 10, y: me.foot.y - 15 }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(hip.x, hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(foot.x, foot.y);
+                        //extra upper leg brace
+                        ctx.moveTo(kneeBraceHigh.x, kneeBraceHigh.y);
+                        ctx.lineTo(kneeBraceLow.x, kneeBraceLow.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+                        //foot
+                        ctx.beginPath();
+                        ctx.moveTo(foot.x, foot.y);
+                        ctx.quadraticCurveTo(me.foot.x - 30, me.foot.y + 12, me.foot.x + 13, me.foot.y + 3);
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y - 2, 11, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 3, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 3, 0, 2 * Math.PI);
+                        //knee brace
+                        // ctx.moveTo(kneeBraceHigh.x + 4, kneeBraceHigh.y);
+                        // ctx.arc(kneeBraceHigh.x, kneeBraceHigh.y, 4, 0, 2 * Math.PI);
+                        ctx.moveTo(kneeBraceLow.x + 2.5, kneeBraceLow.y);
+                        ctx.arc(kneeBraceLow.x, kneeBraceLow.y, 2.5, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(foot.x + 2.5, foot.y);
+                        ctx.arc(foot.x, foot.y, 2.5, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#f6f6f6"//me.fillColor;
+                        ctx.fill();
+                        ctx.lineWidth = 1;
+                        // ctx.strokeStyle = "#333"
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                mech() {
+                    me.isAltSkin = true
+                    me.yOffWhen.stand = 52
+                    me.yOffWhen.jump = 72
+                    me.coyoteCycles = 12 + 120 * me.tech.isCoyote
+                    me.hardLandCDScale = 0.5
+                    me.hardLanding = 250
+                    me.squirrelFx = 1.4;
+                    me.squirrelJump = 1.17;
+                    me.setMovement()
+
+                    me.draw = function () {
+                        if (powerUps.boost.endCycle > simulation.cycle) {
+                            //gel that acts as if the wind is blowing it when player moves
+                            ctx.save();
+                            ctx.translate(me.pos.x, me.pos.y);
+                            me.velocitySmooth = Vector.add(Vector.mult(me.velocitySmooth, 0.8), Vector.mult(player.velocity, 0.2))
+                            ctx.rotate(Math.atan2(me.velocitySmooth.y, me.velocitySmooth.x))
+                            ctx.beginPath();
+                            const radius = 39
+                            const mag = 14 * Vector.magnitude(me.velocitySmooth) + radius
+                            ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                            ctx.bezierCurveTo(-radius, radius, -radius, 0, -mag, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                            ctx.bezierCurveTo(-radius, 0, -radius, -radius, 0, -radius);
+                            const time = Math.min(0.5, (powerUps.boost.endCycle - simulation.cycle) / powerUps.boost.duration)
+                            ctx.fillStyle = `rgba(0,0,0,${0.04 + 0.3 * time})`
+                            ctx.fill()
+                            // ctx.strokeStyle = "#333"
+                            // ctx.lineWidth = 1
+                            // ctx.stroke();
+                            ctx.restore();
+                        }
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -1.25);
+                        me.drawLeg("#606060");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#444");
+
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.75 + me.yOffGoal * 0.25; //smoothly move leg height towards height goal
+                    }
+                    me.drawLeg = function (stroke) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        const hip = { x: me.hip.x - 5, y: me.hip.y + 5 }
+                        const sub = Vector.sub(me.knee, hip)
+                        const off = Vector.mult(Vector.rotate(Vector.normalise(sub), Math.PI / 2), 8)
+                        const kneeBraceHigh = Vector.add(hip, off)
+                        const kneeBraceLow = Vector.add(kneeBraceHigh, Vector.mult(sub, 0.9))
+                        const foot = { x: me.foot.x - 10, y: me.foot.y - 15 }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(hip.x, hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(foot.x, foot.y);
+                        //extra upper leg brace
+                        ctx.moveTo(kneeBraceHigh.x, kneeBraceHigh.y);
+                        ctx.lineTo(kneeBraceLow.x, kneeBraceLow.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+                        //foot
+                        ctx.beginPath();
+                        ctx.moveTo(foot.x, foot.y);
+                        ctx.quadraticCurveTo(me.foot.x - 30, me.foot.y + 12, me.foot.x + 13, me.foot.y + 3);
+                        // me.lastOnGroundCycle + me.coyoteCycles > me.cycle
+
+                        ctx.lineWidth = 1.5
+                        ctx.stroke();
+                        if (me.coyoteCycles > 30 && !me.onGround) {
+                            ctx.lineWidth = 0.2 * Math.max(0, Math.min(3 * (me.cycle - me.lastOnGroundCycle), Math.min(120, me.lastOnGroundCycle + me.coyoteCycles - me.cycle)))
+                            ctx.strokeStyle = "rgba(255, 255, 0, 0.3)"
+                            ctx.stroke()
+                        }
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y - 1, 11, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 3, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 3, 0, 2 * Math.PI);
+                        //knee brace
+                        // ctx.moveTo(kneeBraceHigh.x + 4, kneeBraceHigh.y);
+                        // ctx.arc(kneeBraceHigh.x, kneeBraceHigh.y, 4, 0, 2 * Math.PI);
+                        ctx.moveTo(kneeBraceLow.x + 2.5, kneeBraceLow.y);
+                        ctx.arc(kneeBraceLow.x, kneeBraceLow.y, 2.5, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(foot.x + 2.5, foot.y);
+                        ctx.arc(foot.x, foot.y, 2.5, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.fillColor;
+                        ctx.fill();
+                        ctx.lineWidth = 1;
+                        // ctx.strokeStyle = "#333"
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                polar() {
+                    me.isAltSkin = true
+                    // me.setFillColors();
+                    me.fillColor = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light}%)`
+                    me.fillColorDark = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light - 35}%)`
+                    let grd = ctx.createLinearGradient(-30, 0, 30, 0);
+                    grd.addColorStop(0, me.fillColorDark);
+                    grd.addColorStop(0.7, me.fillColor);
+                    // grd.addColorStop(1, me.fillColor);
+                    me.bodyGradient = grd
+
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+
+                        const diff = (me.lastKillCycle - me.cycle + me.tech.isDamageCooldownTime) / me.tech.isDamageCooldownTime
+                        const color = diff < 0 ? "#fff" : "#aaa"
+                        const hue = 220 + 20 * Math.sin(0.01 * me.cycle)
+                        const colorInverse = diff < 0 ? `hsl(${hue}, 80%, 40%)` : "#fff"
+                        me.drawLeg(color, colorInverse);
+                        me.calcLeg(0, 0);
+                        me.drawLeg(color, colorInverse);
+
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = color
+                        ctx.fill();
+
+                        ctx.beginPath();
+                        ctx.moveTo(15, 0)
+                        ctx.lineTo(28, 0)
+                        ctx.strokeStyle = colorInverse;
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+                        ctx.restore();
+
+                        ctx.beginPath();
+                        ctx.ellipse(me.pos.x, me.pos.y, 24, 18, 3.14 * Math.random(), 0, 2 * Math.PI)
+                        ctx.fillStyle = diff < 0 ? `hsl(${hue}, 80%, 40%)` : `rgba(255,255,255,${Math.min(Math.max(0, diff + 0.3), 1)})`
+                        ctx.fill();
+
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                    me.drawLeg = function (stroke, circles) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 5;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        if (me.onGround) {
+                            ctx.lineTo(me.foot.x - 15, me.foot.y + 5);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 15, me.foot.y + 5);
+                        } else {
+                            ctx.lineTo(me.foot.x - 13, me.foot.y + 8);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 13, me.foot.y + 8);
+                        }
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 11, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 5, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 5, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 5, me.foot.y);
+                        ctx.arc(me.foot.x, me.foot.y, 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = circles;
+                        ctx.fill();
+                        // ctx.lineWidth = 2;
+                        // ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                strokeGap() {
+                    me.isAltSkin = true
+                    me.yOffWhen.stand = 52
+                    me.yOffWhen.jump = 72
+                    me.coyoteCycles = 11 + 120 * me.tech.isCoyote
+
+                    me.squirrelFx = 1.28;
+                    me.setMovement()
+                    // me.speedSmooth = 0
+                    // me.smoothAngle = 0
+                    me.draw = function () {
+                        if (powerUps.boost.endCycle > simulation.cycle) {
+                            //gel that acts as if the wind is blowing it when player moves
+                            ctx.save();
+                            ctx.translate(me.pos.x, me.pos.y);
+                            me.velocitySmooth = Vector.add(Vector.mult(me.velocitySmooth, 0.8), Vector.mult(player.velocity, 0.2))
+                            ctx.rotate(Math.atan2(me.velocitySmooth.y, me.velocitySmooth.x))
+                            ctx.beginPath();
+                            const radius = 40
+                            const mag = 9 * Vector.magnitude(me.velocitySmooth) + radius
+                            ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                            ctx.bezierCurveTo(-radius, radius, -radius, 0, -mag, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                            ctx.bezierCurveTo(-radius, 0, -radius, -radius, 0, -radius);
+
+                            // const time = (powerUps.boost.endCycle - me.cycle) / powerUps.boost.duration
+                            const time = Math.min(0.5, (powerUps.boost.endCycle - simulation.cycle) / powerUps.boost.duration)
+
+                            // ctx.fillStyle = `rgba(255,0,200,${0.4 * time})`
+                            // ctx.fill()
+                            // ctx.strokeStyle = "#f09"
+
+                            ctx.fillStyle = `rgba(255,255,255,${0.3 + time})`;
+                            ctx.fill()
+                            ctx.strokeStyle = "#446"
+                            ctx.lineWidth = 0.2 + 4 * time
+                            // ctx.lineWidth = 1
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -1.25);
+                        me.drawLeg("#606080");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#446");
+
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        // ctx.arc(0, 0, 30, me.angle2 + 1, me.angle2 - 1);
+                        ctx.fillStyle = "#fff"//me.bodyGradient
+                        ctx.fill();
+                        ctx.beginPath();
+                        const arc = 0.7 + 0.17 * Math.sin(me.cycle * 0.012)
+                        ctx.arc(0, 0, 30, -arc, arc, true); //- Math.PI / 2
+                        ctx.strokeStyle = "#446";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+
+                        //fire outline directed opposite player look direction
+                        // ctx.beginPath();
+                        // const radius = 40
+                        // const extend = -50
+                        // ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                        // ctx.bezierCurveTo(extend, radius, extend, 0, -100, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                        // ctx.bezierCurveTo(extend, 0, extend, -radius, 0, -radius);
+                        // ctx.fillStyle = "rgba(255,0,255,0.3)";
+                        // ctx.fill()
+                        ctx.beginPath();
+                        ctx.moveTo(13, 0)
+                        ctx.lineTo(20, 0)
+                        ctx.lineWidth = 5;
+                        ctx.stroke();
+
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 5;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        if (me.onGround) {
+                            ctx.lineTo(me.foot.x - 14, me.foot.y + 5);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 14, me.foot.y + 5);
+                        } else {
+                            ctx.lineTo(me.foot.x - 12, me.foot.y + 8);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 12, me.foot.y + 8);
+                        }
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+                        if (me.coyoteCycles > 30 && !me.onGround) {
+                            ctx.lineWidth = 0.2 * Math.max(0, Math.min(3 * (me.cycle - me.lastOnGroundCycle), Math.min(120, me.lastOnGroundCycle + me.coyoteCycles - me.cycle)))
+                            ctx.strokeStyle = "rgba(255, 255, 0, 0.3)"
+                            ctx.stroke()
+                            ctx.strokeStyle = stroke;
+                        }
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 8, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 4, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 4, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 4, me.foot.y + 1);
+                        ctx.arc(me.foot.x, me.foot.y + 1, 4, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.fillColor;
+                        ctx.fill();
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                energy() {
+                    me.isAltSkin = true
+                    me.color = {
+                        hue: 184,
+                        sat: 100,
+                        light: 85,
+                    }
+                    me.setFillColors();
+                    me.draw = function () {
+                        if (powerUps.boost.endCycle > simulation.cycle) {
+                            //gel that acts as if the wind is blowing it when player moves
+                            ctx.save();
+                            ctx.translate(me.pos.x, me.pos.y);
+                            me.velocitySmooth = Vector.add(Vector.mult(me.velocitySmooth, 0.8), Vector.mult(player.velocity, 0.2))
+                            ctx.rotate(Math.atan2(me.velocitySmooth.y, me.velocitySmooth.x))
+                            ctx.beginPath();
+                            const radius = 40
+                            const mag = 10 * Vector.magnitude(me.velocitySmooth) + radius
+                            ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                            ctx.bezierCurveTo(-radius, radius, -radius, 0, -mag, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                            ctx.bezierCurveTo(-radius, 0, -radius, -radius, 0, -radius);
+
+                            // const time = (powerUps.boost.endCycle - me.cycle) / powerUps.boost.duration
+                            const time = Math.min(0.5, (powerUps.boost.endCycle - simulation.cycle) / powerUps.boost.duration)
+
+                            ctx.fillStyle = `hsla(184,100%,70%,${0.1 + 1.5 * time})`
+                            ctx.fill()
+                            ctx.strokeStyle = "#035"//"hsl(184,100%,70%)"
+                            ctx.lineWidth = 0.2 + 3 * time
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#456");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#345");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "rgba(0,255,255,0.25)";
+                        ctx.lineWidth = 15;
+                        ctx.stroke();
+                        ctx.fillStyle = 'hsl(184,100%,85%)' //me.fillColor; //"#9ff" //me.bodyGradient
+                        ctx.fill();
+
+                        ctx.beginPath();
+                        ctx.arc(17, 0, 5.5, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#357"
+                        ctx.fill();
+                        ctx.restore();
+
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 5;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        if (me.onGround) {
+                            ctx.lineTo(me.foot.x - 15, me.foot.y + 5);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 15, me.foot.y + 5);
+                        } else {
+                            ctx.lineTo(me.foot.x - 13, me.foot.y + 8);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 13, me.foot.y + 8);
+                        }
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 10, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 6, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 6, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 5, me.foot.y);
+                        ctx.arc(me.foot.x, me.foot.y + 1, 5, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "rgba(0,255,255,0.25)";
+                        ctx.lineWidth = 6;
+                        ctx.stroke();
+                        ctx.fillStyle = me.fillColor;
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                },
+                tungsten() {
+                    me.hardLandCDScale = 2
+                    me.hardLanding = 60
+                    // me.coyoteCycles = 0
+                    me.isAltSkin = true
+                    me.color = {
+                        hue: 210,
+                        sat: 5,
+                        light: 75,
+                    }
+                    // me.setFillColors();
+                    me.fillColor = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light}%)`
+                    me.fillColorDark = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light - 50}%)`
+                    const grd = ctx.createLinearGradient(-30, -5, 30, 10);
+                    grd.addColorStop(0, `#e0e0e0`);
+                    grd.addColorStop(0.3, `#bbb`);
+                    grd.addColorStop(0.4, `#b3b3b3`);
+                    grd.addColorStop(0.5, `#c5c5c5`);
+                    grd.addColorStop(0.65, `#bbb`);
+                    grd.addColorStop(0.7, `#b3b3b3`);
+                    grd.addColorStop(0.75, `#bbb`);
+                    grd.addColorStop(1, `#e0e0e0`);
+                    // const grdRad = ctx.createRadialGradient(0, 0, 0, 0, 0, 30);
+                    // grdRad.addColorStop(0, `rgba(0,0,0,0.3)`);
+                    // grdRad.addColorStop(0.5, `rgba(210,210,210,0)`);
+                    me.bodyGradient = grd
+
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(4.2, -3);
+                        me.drawLeg("#666");
+                        me.calcLeg(2.1, -1);
+                        me.drawLeg("#5f5f5f");
+                        me.calcLeg(0, 1);
+                        me.drawLeg("#555");
+                        ctx.rotate(me.angle2);
+
+                        const size = 33
+                        ctx.beginPath();
+                        ctx.lineTo(size * 1, size * 0)
+                        ctx.lineTo(size * 0.5, size * 0.866)
+                        ctx.lineTo(size * -0.5, size * 0.866)
+                        ctx.lineTo(size * -1, size * 0)
+                        ctx.lineTo(size * -0.5, size * -0.866)
+                        ctx.lineTo(size * 0.5, size * -0.866)
+                        ctx.lineTo(size * 1, size * 0)
+                        ctx.lineTo(size * 0.5, size * 0)
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.arc(15, 0, 3, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#333"
+                        ctx.fill();
+
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.9 + me.yOffGoal * 0.1; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 4.5;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y - 1);
+                        ctx.lineTo(me.foot.x - 15, me.foot.y + 5);
+                        ctx.lineTo(me.foot.x + 15, me.foot.y + 5);
+                        ctx.lineTo(me.foot.x, me.foot.y - 1);
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y - 4, 12, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 6, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 6, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 5, me.foot.y);
+                        ctx.arc(me.foot.x, me.foot.y, 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.fillColor;
+                        ctx.fill();
+                        ctx.lineWidth = 1;
+                        ctx.strokeStyle = "#000"
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                },
+                anodize() {
+                    me.isAltSkin = true
+                    me.color = {
+                        hue: 210,
+                        sat: 14,
+                        light: 65,
+                    }
+                    me.fillColor = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light}%)`
+                    me.fillColorDark = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light - 50}%)`
+                    const grd = ctx.createRadialGradient(16, 0, 0, 0, 0, 40);
+                    grd.addColorStop(0, `#c78034`);
+                    grd.addColorStop(0.04, `#bd5235`);
+                    grd.addColorStop(0.08, `#ab554d`);
+                    grd.addColorStop(0.12, `#8f5d8f`);
+                    grd.addColorStop(0.16, `#4352ab`);
+                    grd.addColorStop(0.2, `#2058b3`);
+                    grd.addColorStop(0.24, `#1a6fc4`);
+                    grd.addColorStop(0.28, `#1b85cf`);
+                    grd.addColorStop(0.32, `#2d9bd7`);
+                    grd.addColorStop(0.4, `#d2d7b4`);
+                    grd.addColorStop(0.44, `#e1cd87`);
+                    grd.addColorStop(0.48, `#f0b955`);
+                    grd.addColorStop(0.52, `#ffa050`);
+                    grd.addColorStop(0.56, `#ff8269`);
+                    grd.addColorStop(0.6, `#f5697d`);
+                    grd.addColorStop(0.64, `#e65aaf`);
+                    grd.addColorStop(0.68, `#d732d7`);
+                    grd.addColorStop(0.72, `#c846e6`);
+                    grd.addColorStop(0.76, `#c850fa`);
+                    grd.addColorStop(0.8, `#878cf0`);
+                    grd.addColorStop(0.84, `#37beeb`);
+                    grd.addColorStop(0.88, `#00d2be`);
+                    grd.addColorStop(0.92, `#00e19b`);
+                    grd.addColorStop(0.96, `#19f5aa`);
+                    grd.addColorStop(1, `#aaf5af`);
+                    me.bodyGradient = grd
+
+                    me.draw = function () {
+                        if (powerUps.boost.endCycle > simulation.cycle) {
+                            //gel that acts as if the wind is blowing it when player moves
+                            ctx.save();
+                            ctx.translate(me.pos.x, me.pos.y);
+                            me.velocitySmooth = Vector.add(Vector.mult(me.velocitySmooth, 0.8), Vector.mult(player.velocity, 0.2))
+                            ctx.rotate(Math.atan2(me.velocitySmooth.y, me.velocitySmooth.x))
+                            ctx.beginPath();
+                            const radius = 40
+                            const mag = 12 * Vector.magnitude(me.velocitySmooth) + radius
+                            ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                            ctx.bezierCurveTo(-radius, radius, -radius, 0, -mag, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                            ctx.bezierCurveTo(-radius, 0, -radius, -radius, 0, -radius);
+                            // const time = (powerUps.boost.endCycle - me.cycle) / powerUps.boost.duration
+                            const time = Math.min(0.5, (powerUps.boost.endCycle - simulation.cycle) / powerUps.boost.duration)
+
+                            ctx.fillStyle = `hsla(${simulation.cycle},100%,70%,${0.1 + 2 * time})`
+                            ctx.fill()
+                            ctx.restore();
+                        }
+
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a5a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#445");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        // ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#222";
+                        ctx.lineWidth = 2;
+                        // ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 5;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        if (me.onGround) {
+                            ctx.lineTo(me.foot.x - 15, me.foot.y + 5);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 15, me.foot.y + 5);
+                        } else {
+                            ctx.lineTo(me.foot.x - 13, me.foot.y + 8);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 13, me.foot.y + 8);
+                        }
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 9, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#222";
+                        ctx.fill();
+                        //knee joint
+                        ctx.beginPath();
+                        ctx.arc(me.knee.x, me.knee.y, 5, 0, 2 * Math.PI);
+                        ctx.fill();
+                        //foot joint
+                        ctx.beginPath();
+                        ctx.arc(me.foot.x, me.foot.y, 4, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                },
+                dilate() {
+                    me.isAltSkin = true
+                    simulation.isAutoZoom = false;
+                    me.squirrelFx = 1.28;
+                    me.setMovement()
+
+                    me.draw = function () {
+                        const amplitude = 8 + 4 * Math.sin(me.cycle * 0.01)
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#456");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#345");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.strokeStyle = "#345";
+                        ctx.lineWidth = 2;
+                        ctx.arc(12, 0, amplitude, 0, 2 * Math.PI); //big eye
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(12, 0, amplitude, 0, 2 * Math.PI); //big eye
+                        // ctx.fillStyle = `hsl(0,0%,${50+50*Math.sin(me.cycle * 0.0075+Math.PI)}%)` //`hsl(${150+50*Math.sin(me.cycle * 0.0075)},100%,50%)`
+                        // ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+
+                        if (powerUps.boost.endCycle > simulation.cycle) {
+                            //gel that acts as if the wind is blowing it when player moves
+                            ctx.save();
+                            ctx.translate(me.pos.x, me.pos.y);
+                            me.velocitySmooth = Vector.add(Vector.mult(me.velocitySmooth, 0.8), Vector.mult(player.velocity, 0.2))
+                            ctx.rotate(Math.atan2(me.velocitySmooth.y, me.velocitySmooth.x))
+                            ctx.beginPath();
+                            const radius = 39
+                            const mag = 6 * Vector.magnitude(me.velocitySmooth) + radius
+                            ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                            ctx.bezierCurveTo(-radius, radius, -radius, 0, -mag, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                            ctx.bezierCurveTo(-radius, 0, -radius, -radius, 0, -radius);
+                            // ctx.fillStyle = `hsla(${simulation.cycle * 0.5},100%,70%,0.4)`
+                            // ctx.fill()
+                            ctx.strokeStyle = "#345"
+                            // const time = (powerUps.boost.endCycle - me.cycle) / powerUps.boost.duration
+                            const time = Math.min(0.5, (powerUps.boost.endCycle - simulation.cycle) / powerUps.boost.duration)
+
+                            ctx.lineWidth = 0.2 + 4 * time
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+
+                        //zoom camera in and out
+                        simulation.setZoom(1800 + 500 * Math.sin(me.cycle * 0.01))
+                    }
+                },
+                dilate2() {
+                    me.isAltSkin = true
+                    me.squirrelFx = 1.28;
+                    me.setMovement()
+
+                    me.draw = function () {
+                        const amplitude = Math.sin(me.cycle * 0.01)
+
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#456");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#345");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.strokeStyle = "#345";
+                        ctx.lineWidth = 3 + 3 * Math.sin(me.cycle * 0.01 + Math.PI);
+                        ctx.stroke();
+                        // ctx.arc(12, 0, 8 + 4 * amplitude, 0, 2 * Math.PI); //big eye
+                        ctx.beginPath();
+                        ctx.arc(12, 0, 8 + 4 * amplitude, 0, 2 * Math.PI); //big eye
+                        ctx.fillStyle = "#345"
+                        // ctx.fillStyle = //`hsl(0,0%,${50+50*Math.sin(me.cycle * 0.0075+Math.PI)}%)` //`hsl(${150+50*Math.sin(me.cycle * 0.0075)},100%,50%)`
+                        // ctx.fillStyle = `hsl(${150 + 100 * amplitude},100%,50%)`
+                        ctx.fill();
+                        // ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+
+                        if (powerUps.boost.endCycle > simulation.cycle) {
+                            //gel that acts as if the wind is blowing it when player moves
+                            ctx.save();
+                            ctx.translate(me.pos.x, me.pos.y);
+                            me.velocitySmooth = Vector.add(Vector.mult(me.velocitySmooth, 0.8), Vector.mult(player.velocity, 0.2))
+                            ctx.rotate(Math.atan2(me.velocitySmooth.y, me.velocitySmooth.x))
+                            ctx.beginPath();
+                            const radius = 39
+                            const mag = 6 * Vector.magnitude(me.velocitySmooth) + radius
+                            ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+                            ctx.bezierCurveTo(-radius, radius, -radius, 0, -mag, 0); // bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+                            ctx.bezierCurveTo(-radius, 0, -radius, -radius, 0, -radius);
+                            // ctx.fillStyle = `hsla(${simulation.cycle * 0.5},100%,70%,0.4)`
+                            // ctx.fill()
+                            const time = Math.min(0.5, (powerUps.boost.endCycle - simulation.cycle) / powerUps.boost.duration)
+
+                            ctx.strokeStyle = "#345"
+                            ctx.lineWidth = 0.2 + 7 * time
+                            // ctx.lineWidth = (4 + 3 * Math.sin(me.cycle * 0.01 + Math.PI)) * time;
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+
+                        simulation.setZoom(1800 + 500 * amplitude)
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 6 + 2 * Math.sin(me.cycle * 0.01 + Math.PI);
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        if (me.onGround) {
+                            ctx.lineTo(me.foot.x - 15, me.foot.y + 5);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 15, me.foot.y + 5);
+                        } else {
+                            ctx.lineTo(me.foot.x - 13, me.foot.y + 8);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 13, me.foot.y + 8);
+                        }
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 11, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 7, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 7, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 6, me.foot.y);
+                        ctx.arc(me.foot.x, me.foot.y, 6, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#345";
+                        ctx.fill();
+                        ctx.lineWidth = 3 + 3 * Math.sin(me.cycle * 0.01 + Math.PI);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                CPT() {
+                    me.isAltSkin = true
+
+                    me.fillColor = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light}%)`
+                    me.fillColorDark = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light - 35}%)`
+                    let grd = ctx.createLinearGradient(-20, 0, 15, 0);
+                    grd.addColorStop(0, me.fillColorDark);
+                    grd.addColorStop(1, me.fillColor);
+                    // grd.addColorStop(1, me.fillColor);
+                    me.bodyGradient = grd
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#eee");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#fff");
+
+                        ctx.rotate(0.024 * simulation.cycle);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.energy > 0.85 * Math.min(1, me.maxEnergy) ? me.bodyGradient : "#fff"
+                        ctx.fill();
+                        ctx.restore();
+
+                        ctx.beginPath();
+                        ctx.arc(me.pos.x + 15 * Math.cos(me.angle2), me.pos.y + 15 * Math.sin(me.angle2), 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#000"
+                        ctx.fill();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 5;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        if (me.onGround) {
+                            ctx.lineTo(me.foot.x - 15, me.foot.y + 5);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 15, me.foot.y + 5);
+                        } else {
+                            ctx.lineTo(me.foot.x - 13, me.foot.y + 8);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 13, me.foot.y + 8);
+                        }
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 11, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 5, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 5, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 5, me.foot.y);
+                        ctx.arc(me.foot.x, me.foot.y, 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#000";
+                        ctx.fill();
+                        // ctx.lineWidth = 2;
+                        // ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                verlet() {
+                    me.isAltSkin = true
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -2);
+                        me.drawLeg("#4a4a4a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        const rate = 0.09
+                        ctx.strokeStyle = "#000";
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, rate * (simulation.cycle + 0) % 30, 0, 2 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(0, 0, rate * (simulation.cycle + 15 / rate) % 30, 0, 2 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.stroke();
+
+                        ctx.globalCompositeOperation = "difference";
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(21, 0, 8, 0, 2 * Math.PI);
+                        ctx.fillStyle = input.fire ? "#0ff" : input.field ? "#d30" : `#fff`
+                        ctx.fill();
+                        ctx.restore();
+
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        const footDrop = me.onGround ? 5 : 10
+                        ctx.lineTo(me.foot.x - 15, me.foot.y + footDrop);
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        ctx.lineTo(me.foot.x + 15, me.foot.y + footDrop);
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 9, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 5, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 3, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 5, me.foot.y);
+                        ctx.arc(me.foot.x, me.foot.y, 4, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#000";
+                        ctx.fill();
+                        // ctx.lineWidth = 2;
+                        // ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                stubs() {
+                    me.isAltSkin = true
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#555");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y + 5);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 6;
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                },
+                Sleipnir() {
+                    me.isAltSkin = true
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        for (let i = 0; i < 16; i++) {
+                            me.calcLeg(Math.PI * i / 8, -3 * i / 16)
+                            me.drawLeg("#444")
+                        }
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                },
+                diegesis() {
+                    me.isAltSkin = true
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a4a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+                        ctx.rotate(me.angle2 - (me.fireCDcycle !== Infinity ? me.flipLegs * 0.25 * Math.pow(Math.max(me.fireCDcycle - me.cycle, 0), 0.5) : 0));
+
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                },
+                cat() {
+                    me.isAltSkin = true
+                    me.coyoteCycles = 12
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a4a");
+                        if (!(me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2)) {
+                            ctx.scale(1, -1);
+                            ctx.rotate(Math.PI);
+                        }
+                        ctx.beginPath();
+                        ctx.moveTo(-30, 0);
+                        ctx.bezierCurveTo(-65, -75,
+                            -5, 150 + (5 * Math.sin(simulation.cycle / 10)),
+                            -70 + (10 * Math.sin(simulation.cycle / 10)), 0 + (10 * Math.sin(simulation.cycle / 10)));
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+
+                        if (!(me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2)) {
+                            ctx.scale(1, -1);
+                            ctx.rotate(0 - Math.PI);
+                        }
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+
+                        ctx.rotate(me.angle2);
+                        if (!(me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2)) ctx.scale(1, -1);
+                        ctx.beginPath();
+                        ctx.moveTo(5, -30);
+                        ctx.lineTo(20, -40);
+                        ctx.lineTo(20, -20);
+                        ctx.lineWidth = 2;
+                        ctx.fillStyle = "#f3f";
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.moveTo(19, 0);
+                        ctx.arc(15, 0, 4, Math.PI, 2 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(24.3, 6, 5, Math.PI * 2, Math.PI);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(30, 6);
+                        ctx.lineTo(32, 0);
+                        ctx.lineTo(26, 0);
+                        ctx.lineTo(30, 6);
+                        ctx.fillStyle = "#f3f";
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                },
+                pareidolia() {
+                    me.isAltSkin = true
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a4a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        if (!(me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2)) ctx.scale(1, -1); //here is the flip
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(2, -6, 7, 0, 2 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(25, -6, 7, 0.25 * Math.PI, 1.6 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(2, -10, 9, 1.25 * Math.PI, 1.75 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(25, -10, 9, 1.25 * Math.PI, 1.4 * Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(18, 13, 10, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient;
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(18, 13, 6, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#555";
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(3, -6, 3, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(26, -6, 3, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15;
+                        powerUps.boost.draw()
+                    }
+                },
+                flipFlop() {
+                    me.isAltSkin = true
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+
+                        //draw body
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a4a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        //draw eye
+                        ctx.beginPath();
+                        ctx.arc(15, 0, 3.5, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.eyeFillColor;
+                        ctx.fill()
+                        ctx.restore();
+
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                },
+                hexagon() {
+                    me.isAltSkin = true
+
+                    me.fillColor = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light}%)`
+                    me.fillColorDark = `hsl(${me.color.hue},${me.color.sat}%,${me.color.light - 35}%)`
+                    let grd = ctx.createLinearGradient(-30, 0, 30, 0);
+                    grd.addColorStop(0, me.fillColorDark);
+                    grd.addColorStop(0.7, me.fillColor);
+                    // grd.addColorStop(1, me.fillColor);
+                    me.bodyGradient = grd
+
+                    me.draw = function () {
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx;
+                        ctx.save();
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        ctx.translate(me.pos.x, me.pos.y);
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a4a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+                        ctx.rotate(me.angle2);
+
+                        const size = 32
+                        ctx.beginPath();
+                        ctx.lineTo(size * 1, size * 0)
+                        ctx.lineTo(size * 0.5, size * 0.866)
+                        ctx.lineTo(size * -0.5, size * 0.866)
+                        ctx.lineTo(size * -1, size * 0)
+                        ctx.lineTo(size * -0.5, size * -0.866)
+                        ctx.lineTo(size * 0.5, size * -0.866)
+                        ctx.lineTo(size * 1, size * 0)
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                        powerUps.boost.draw()
+                    }
+                    me.drawLeg = function (stroke) {
+                        // if (simulation.mouseInGame.x > me.pos.x) {
+                        if (me.angle2 > -Math.PI / 2 && me.angle2 < Math.PI / 2) {
+                            me.flipLegs = 1;
+                        } else {
+                            me.flipLegs = -1;
+                        }
+                        ctx.save();
+                        ctx.scale(me.flipLegs, 1); //leg lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.hip.x, me.hip.y);
+                        ctx.lineTo(me.knee.x, me.knee.y);
+                        ctx.lineTo(me.foot.x, me.foot.y);
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 6;
+                        ctx.stroke();
+
+                        //toe lines
+                        ctx.beginPath();
+                        ctx.moveTo(me.foot.x, me.foot.y);
+                        if (me.onGround) {
+                            ctx.lineTo(me.foot.x - 15, me.foot.y + 5);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 15, me.foot.y + 5);
+                        } else {
+                            ctx.lineTo(me.foot.x - 13, me.foot.y + 8);
+                            ctx.moveTo(me.foot.x, me.foot.y);
+                            ctx.lineTo(me.foot.x + 13, me.foot.y + 8);
+                        }
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        //hip joint
+                        ctx.beginPath();
+                        ctx.arc(me.hip.x, me.hip.y, 11, 0, 2 * Math.PI);
+                        //knee joint
+                        ctx.moveTo(me.knee.x + 5, me.knee.y);
+                        ctx.arc(me.knee.x, me.knee.y, 5, 0, 2 * Math.PI);
+                        //foot joint
+                        ctx.moveTo(me.foot.x + 5, me.foot.y);
+                        ctx.arc(me.foot.x, me.foot.y, 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = "#000";
+                        ctx.fill();
+                        // ctx.lineWidth = 2;
+                        // ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            }
 			Events.on(engine, "collisionStart", function (event) {
 				me.onGroundCheck(event);
 
@@ -9858,7 +11419,7 @@ function initP2P() {
                     } else if (me.gunType == 4) { //missiles
                         const countReduction = Math.pow(0.86, me.tech.missileCount)
                         me.fireCDcycle = me.cycle + me.tech.missileFireCD * me.fireCDscale / countReduction; 
-                        const direction = { x: Math.cos(me.angle2), y: Math.sin(me.angle2) }
+                        let direction = { x: Math.cos(me.angle2), y: Math.sin(me.angle2) }
                         if (me.tech.missileCount > 1) {
                             const push = Vector.mult(Vector.perp(direction), 0.2 * countReduction / Math.sqrt(me.tech.missileCount));
                             const sqrtCountReduction = Math.sqrt(countReduction);
@@ -9914,7 +11475,7 @@ function initP2P() {
                             requestAnimationFrame(cycle);
                         } else {
 							if (me.crouch) {
-								b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, 25, 1, me.id)
+								// b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, 25, 1, me.id)
 								if (me.tech.isMissileSide) {
 									direction = Vector.rotate(direction, Math.PI / 2)
 									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2 + Math.PI / 2, 0, 1, me.id)
@@ -9926,8 +11487,8 @@ function initP2P() {
 									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, 25, 1, me.id)
 								}
 							} else {
-								b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, -12, 1, me.id)
-								bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
+								// b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, -12, 1, me.id)
+								// bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
 								if (me.tech.isMissileSide) {
 									direction = Vector.rotate(direction, Math.PI / 2)
 									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2 + Math.PI / 2, 25, 1, me.id)
