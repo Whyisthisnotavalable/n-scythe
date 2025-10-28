@@ -4831,6 +4831,10 @@ function initP2P() {
                 isNitinol: null,
                 isEndothermic: null,
                 isPrecision: null,
+				isExtraGunTech: null,
+			    isExplodeContact: null,
+			    isMissileSide: null,
+			    isLaserShot: null,
             };
 			me.onGroundCheck = function (event) {
 				function enter() {
@@ -7712,10 +7716,17 @@ function initP2P() {
                             me.energy -= drain;
                             const direction = { x: Math.cos(me.angle2), y: Math.sin(me.angle2) }
                             const push = Vector.mult(Vector.perp(direction), 0.08)
-                            b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2, -15, 1, me.id)
-                            bullet[bullet.length - 1].force.x += push.x * (Math.random() - 0.5)
-                            bullet[bullet.length - 1].force.y += 0.005 + push.y * (Math.random() - 0.5)
-                            // b2.missile({ x: me.pos.x, y: me.pos.y - 40 }, -Math.PI / 2 + 0.5 * (Math.random() - 0.5), 0, 1)
+							if (me.tech.isMissileSide) {
+                                let d = Vector.rotate({ x: Math.cos(me.angle2), y: Math.sin(me.angle2) }, Math.PI / 2)
+                                b2.missile({ x: me.pos.x + 30 * d.x, y: me.pos.y + 30 * d.y }, me.angle2 + Math.PI / 2, 15)
+                                d = Vector.rotate(d, Math.PI)
+                                b2.missile({ x: me.pos.x + 30 * d.x, y: me.pos.y + 30 * d.y }, me.angle2 - Math.PI / 2, 15, 1, me.id)
+                            } else {
+                                b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2, -15, 1, me.id)
+                                bullet[bullet.length - 1].force.x += push.x * (Math.random() - 0.5)
+                                bullet[bullet.length - 1].force.y += 0.005 + push.y * (Math.random() - 0.5)
+                            }
+
                             me.endoThermic(drain)
                         } else if (me.molecularMode === 2) {
                             const drain = 0.04
@@ -9383,7 +9394,53 @@ function initP2P() {
                             }
                         }
                         const chooseBulletType = function () {
-                            if (me.tech.isRivets) {
+							if (me.tech.isLaserShot) {
+		                        simulation.ephemera.push({
+		                            count: 150 * me.tech.bulletsLastLonger, //cycles before it self removes
+		                            where: { x: me.pos.x + 15 * Math.cos(me.angle2), y: me.pos.y + 15 * Math.sin(me.angle2) },
+		                            end: {
+		                                x: me.pos.x + 5000 * Math.cos(me.angle2),
+		                                y: me.pos.y + 5000 * Math.sin(me.angle2)
+		                            },
+		                            dmg: 0.23 * (me.tech.isShotgunReversed ? 1.5 : 1), //normal laser is 0.18
+		                            angle: me.angle2,
+		                            cleared: me.level.levelsCleared,
+		                            // color: "#0f8",
+		                            do() {
+		                                this.count--
+		                                if (this.count < 0 || this.cleared !== me.level.levelsCleared) simulation.removeEphemera(this)
+		
+		                                // const color = `hsl(${270 + 80 * Math.sin(simulation.cycle * 0.03)},100%,50%)`
+		                                //!(simulation.cycle % 10)
+		                                const color = `hsla(${340 + 40 * Math.sin(simulation.cycle * 0.3)}, 100%, 50%, 1.00)`
+		                                b2.laser(this.where, this.end, this.dmg, me.tech.laserReflections, false, 1, me.id);
+		                                if (me.tech.beamSplitter) {
+		                                    let spread = 0.05
+		                                    for (let i = 0; i < me.tech.beamSplitter; i++) {
+		                                        b2.laser(this.where, {
+		                                            x: this.where.x + 5000 * Math.cos(this.angle + spread),
+		                                            y: this.where.y + 5000 * Math.sin(this.angle + spread)
+		                                        }, this.dmg, me.tech.laserReflections, false, 1, me.id)
+		                                        spread *= -1
+		                                        if (spread > 0) spread += 0.05
+		                                    }
+		                                }
+		                                const size = 12;
+		                                ctx.save();
+		                                ctx.translate(this.where.x, this.where.y);
+		                                ctx.rotate(this.angle);
+		                                ctx.beginPath();
+		                                ctx.moveTo(size, 0);           // tip (pointing right/forward)
+		                                ctx.lineTo(0, size / 2);       // bottom
+		                                ctx.lineTo(-size, 0);          // back
+		                                ctx.lineTo(0, -size / 2);      // top
+		                                ctx.closePath();
+		                                ctx.fillStyle = color;
+		                                ctx.fill();
+		                                ctx.restore();
+		                            },
+		                        })
+		                    } else if (me.tech.isRivets) {
                                 const em = bullet.length;
                                 // const dir = me.angle2 + 0.02 * (Math.random() - 0.5)
                                 bullet[em] = Bodies.rectangle(me.pos.x + 35 * Math.cos(me.angle2), me.pos.y + 35 * Math.sin(me.angle2), 56 * me.tech.bulletSize, 25 * me.tech.bulletSize, b.fireAttributes(me.angle2));
@@ -9803,19 +9860,44 @@ function initP2P() {
                         me.fireCDcycle = me.cycle + me.tech.missileFireCD * me.fireCDscale / countReduction; 
                         const direction = { x: Math.cos(me.angle2), y: Math.sin(me.angle2) }
                         if (me.tech.missileCount > 1) {
-                            const push = Vector.mult(Vector.perp(direction), 0.2 * countReduction / Math.sqrt(me.tech.missileCount))
-                            const sqrtCountReduction = Math.sqrt(countReduction)
-                            const launchDelay = 4
-                            let count = 0
+                            const push = Vector.mult(Vector.perp(direction), 0.2 * countReduction / Math.sqrt(me.tech.missileCount));
+                            const sqrtCountReduction = Math.sqrt(countReduction);
+                            const launchDelay = 4;
+                            let count = 0;
+							let totalMissiles = me.tech.isMissileSide + me.tech.missileCount;
                             const fireMissile = () => {
                                 if (me.crouch) {
-                                    b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2, 20, sqrtCountReduction, me.id)
-                                    bullet[bullet.length - 1].force.x += 0.5 * push.x * (Math.random() - 0.5)
-                                    bullet[bullet.length - 1].force.y += 0.004 + 0.5 * push.y * (Math.random() - 0.5)
+                                    if (me.tech.isMissileSide) {
+		                                direction = Vector.rotate({ x: Math.cos(me.angle2), y: Math.sin(me.angle2) }, Math.PI / 2)
+		                                b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2 + Math.PI / 2, 0, sqrtCountReduction, me.id)
+		                                totalMissiles--
+		                                if (totalMissiles > 0) {
+		                                    direction = Vector.rotate(direction, Math.PI)
+		                                    b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2 - Math.PI / 2, 0, sqrtCountReduction, me.id)
+		                                    totalMissiles--
+		                                }
+									} else {
+										b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2, 20, sqrtCountReduction, me.id)
+										bullet[bullet.length - 1].force.x += 0.5 * push.x * (Math.random() - 0.5)
+										bullet[bullet.length - 1].force.y += 0.004 + 0.5 * push.y * (Math.random() - 0.5)
+										totalMissiles--
+									}
                                 } else {
-                                    b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2, -15, sqrtCountReduction, me.id)
-                                    bullet[bullet.length - 1].force.x += push.x * (Math.random() - 0.5)
-                                    bullet[bullet.length - 1].force.y += 0.005 + push.y * (Math.random() - 0.5)
+                                    if (me.tech.isMissileSide) {
+		                                direction = Vector.rotate({ x: Math.cos(me.angle2), y: Math.sin(me.angle2) }, Math.PI / 2)
+		                                b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2 + Math.PI / 2, 15, sqrtCountReduction, me.id)
+		                                totalMissiles--
+		                                if (totalMissiles > 0) {
+		                                    direction = Vector.rotate(direction, Math.PI)
+		                                    b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2 - Math.PI / 2, 15, sqrtCountReduction, me.id)
+		                                    totalMissiles--
+		                                }
+		                            } else {
+		                                b2.missile({ x: me.pos.x + 30 * direction.x, y: me.pos.y + 30 * direction.y }, me.angle2, -15, sqrtCountReduction, me.id)
+		                                bullet[bullet.length - 1].force.x += push.x * (Math.random() - 0.5)
+		                                bullet[bullet.length - 1].force.y += 0.005 + push.y * (Math.random() - 0.5)
+		                                totalMissiles--
+		                            }
                                 }
                             }
                             const cycle = () => {
@@ -9826,17 +9908,38 @@ function initP2P() {
                                     if (!(count % launchDelay)) {
                                         fireMissile()
                                     }
-                                    if (count < me.tech.missileCount * launchDelay && me.alive) requestAnimationFrame(cycle);
+                                    if (totalMissiles > 0 && me.alive) requestAnimationFrame(cycle);
                                 }
                             }
                             requestAnimationFrame(cycle);
                         } else {
-                            if (me.crouch) {
-                                b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, 25, 1, me.id)
-                            } else {
-                                b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, -12, 1, me.id)
-                                bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
-                            }
+							if (me.crouch) {
+								b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, 25, 1, me.id)
+								if (me.tech.isMissileSide) {
+									direction = Vector.rotate(direction, Math.PI / 2)
+									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2 + Math.PI / 2, 0, 1, me.id)
+									// bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
+									direction = Vector.rotate(direction, Math.PI)
+									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2 - Math.PI / 2, 0, 1, me.id)
+									// bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
+								} else {
+									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, 25, 1, me.id)
+								}
+							} else {
+								b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, -12, 1, me.id)
+								bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
+								if (me.tech.isMissileSide) {
+									direction = Vector.rotate(direction, Math.PI / 2)
+									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2 + Math.PI / 2, 25, 1, me.id)
+									// bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
+									direction = Vector.rotate(direction, Math.PI)
+									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2 - Math.PI / 2, 25, 1, me.id)
+									// bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
+								} else {
+									b2.missile({ x: me.pos.x + 40 * direction.x, y: me.pos.y + 40 * direction.y }, me.angle2, -12, 1, me.id)
+									bullet[bullet.length - 1].force.y += 0.04 * (Math.random() - 0.2)
+								}
+							}
                         }
                     } else if (me.gunType == 5) { //grenades
                         const countReduction = Math.pow(0.93, me.tech.missileCount)
