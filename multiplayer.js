@@ -1,13 +1,92 @@
 if (typeof Peer === "undefined") {
-	const script = document.createElement("script");
-	script.src = "https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"
-	script.onload = initP2P;
-	document.head.appendChild(script);
+    const peerScript = document.createElement("script");
+    peerScript.src = "https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js";
+    peerScript.onload = () => {
+        initP2P();
+        const socketScript = document.createElement("script");
+        socketScript.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
+        document.head.appendChild(socketScript);
+    };
+    document.head.appendChild(peerScript);
 } else {
-	initP2P();
+    initP2P();
+    if (typeof io === "undefined") {
+        const socketScript = document.createElement("script");
+        socketScript.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
+        socketScript.onload = () => {
+            console.log("Socket.io loaded - presence server available");
+        };
+        document.head.appendChild(socketScript);
+    }
 }
 function initP2P() {
 	(function () {
+        const PRESENCE_SERVER = "https://presence-server-production-5dfe.up.railway.app";
+        let socket = null;
+        let onlinePlayers = new Map();
+
+        function connectToPresenceServer() {
+            if (typeof io === "undefined") {
+                console.log("Socket.io not available - presence server disabled");
+                return;
+            }
+            
+            try {
+                socket = io(PRESENCE_SERVER, {
+                    transports: ["websocket"],
+                    upgrade: false,
+                });
+                
+                socket.on("connect", () => {
+                    log("Connected to presence server");
+                    if (peer && peer.id) {
+                        socket.emit("register", {
+                            name: window.username,
+                            peerId: peer.id
+                        });
+                    }
+                });
+                
+                socket.on("playerList", (players) => {
+                    updateOnlinePlayers(players);
+                });
+                
+                socket.on("invite", (fromPlayer) => {
+                    handleInvite(fromPlayer);
+                });
+                
+                socket.on("disconnect", () => {
+                    log("Disconnected from presence server");
+                    setTimeout(connectToPresenceServer, 5000);
+                });
+                
+            } catch (error) {
+                log("Failed to connect to presence server: " + error);
+            }
+        }
+
+        function updateOnlinePlayers(players) {
+            if (!players) return;
+            onlinePlayers.clear();
+            players.forEach(player => {
+                onlinePlayers.set(player.peerId, player);
+            });
+            updateOnlinePlayersList();
+        }
+        function handleInvite(fromPlayer) {
+            if (confirm(`${fromPlayer.name} wants to play with you. Accept invitation?`)) {
+                if (socket) {
+                    socket.emit("joinParty", { leaderPeerId: fromPlayer.peerId });
+                }
+                connectToPlayer(fromPlayer.peerId);
+            }
+        }
+        function handleInvite(fromPlayer) {
+            if (confirm(`${fromPlayer.name} wants to play with you. Accept invitation?`)) {
+                socket.emit("joinParty", { leaderPeerId: fromPlayer.peerId });
+                connectToPlayer(fromPlayer.peerId);
+            }
+        }
         class P2PConnectionManager {
             constructor(peer, config) {
                 this.peer = peer;
@@ -278,22 +357,32 @@ function initP2P() {
 		const container = document.createElement("details");
 		container.id = "multiplayer-details";
 		container.innerHTML = `
-        <summary>multiplayer</summary>
-        <div class="details-div" style="max-width: 50rem;">
-            <div class="id-container">
-                <span>Your ID:</span>
-                <span id="p2p-id-display">...</span>
-                <button class="copy-button" id="p2p-copy-id">Copy</button>
+            <summary>multiplayer</summary>
+            <div class="details-div" style="max-width: 50rem;">
+                <div class="id-container">
+                    <span>Your ID:</span>
+                    <span id="p2p-id-display">...</span>
+                    <button class="copy-button" id="p2p-copy-id">Copy</button>
+                </div>
+                <div>Client ID: <span id="client-id-display">${clientId}</span></div>
+                <div>
+                    <label for="p2p-username">Username:</label>
+                    <input type="text" id="p2p-username" placeholder="Enter username" maxlength="20">
+                </div>
+                
+                <div id="online-players-section" style="margin: 10px 0; display: none;">
+                    <h3>Online Players (<span id="online-count">0</span>)</h3>
+                    <div id="online-players-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+                        <div style="text-align: center; color: #888; padding: 10px;" id="no-players-msg">
+                            No other players online
+                        </div>
+                    </div>
+                </div>
+                
+                <input type="text" id="p2p-remote-id" placeholder="Friend's ID">
+                <button id="p2p-connect" class="connection-button">Connect</button>
+                <div id="p2p-status">Status: <span class="status-disconnected">Disconnected</span></div>
             </div>
-            <div>Client ID: <span id="client-id-display">${clientId}</span></div>
-            <div>
-                <label for="p2p-username">Username:</label>
-                <input type="text" id="p2p-username" placeholder="Enter username" maxlength="20">
-            </div>
-            <input type="text" id="p2p-remote-id" placeholder="Friend's ID">
-            <button id="p2p-connect" class="connection-button">Connect</button>
-            <div id="p2p-status">Status: <span class="status-disconnected">Disconnected</span></div>
-        </div>
         `;
 		const infoSection = document.getElementById('info');
         infoSection.insertBefore(container, infoSection.firstChild);
@@ -320,6 +409,13 @@ function initP2P() {
             window.oldUsername = window.username;
             localStorage.setItem('p2pUsername', username);
             sendUsernameUpdate();
+            
+            if (socket && peer.id) {
+                socket.emit("register", {
+                    name: window.username,
+                    peerId: peer.id
+                });
+            }
         });
         const savedUsername = localStorage.getItem('p2pUsername');
         if (savedUsername) {
@@ -345,6 +441,91 @@ function initP2P() {
 			const statusElement = document.getElementById("p2p-status");
 			statusElement.innerHTML = `Status: <span class="${statusClass}">${text}</span>`;
 		}
+        function updateOnlinePlayersList() {
+            const section = document.getElementById('online-players-section');
+            const list = document.getElementById('online-players-list');
+            const countElement = document.getElementById('online-count');
+            const noPlayersMsg = document.getElementById('no-players-msg');
+            if (!section || !list || !countElement || !noPlayersMsg) {
+                console.warn("updateOnlinePlayersList: UI elements not ready yet");
+                return;
+            }
+            const playersSnapshot = Array.from(onlinePlayers.values());
+            const otherPlayers = playersSnapshot.filter(p => p && p.peerId && p.peerId !== peer.id);
+            if (otherPlayers.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+            countElement.textContent = otherPlayers.length.toString();
+            list.replaceChildren();
+            noPlayersMsg.style.display = 'none';
+            for (const player of otherPlayers) {
+                const playerElement = document.createElement('div');
+                playerElement.style.cssText = `
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px;
+                    margin: 4px 0;
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 4px;
+                    border: 1px solid rgba(255,255,255,0.1);
+                `;
+
+                playerElement.innerHTML = `
+                    <div style="flex: 1;">
+                        <strong style="color: black;">${player.name || 'Unnamed player'}</strong>
+                        <div style="font-size: 11px; color: #888; margin-top: 2px;">
+                            ${player.peerId?.substring(0, 8) || 'unknown'}...
+                            ${player.partyId ? 'In Party' : 'Online'}
+                        </div>
+                    </div>
+                    <div>
+                        <button class="invite-button copy-button" data-id="${player.peerId}">Invite</button>
+                        <button class="connect-button copy-button" data-id="${player.peerId}">Join</button>
+                    </div>
+                `;
+
+                list.appendChild(playerElement);
+            }
+            list.querySelectorAll('.invite-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const targetId = e.currentTarget?.getAttribute('data-id');
+                    if (targetId) sendInvite(targetId);
+                });
+            });
+            list.querySelectorAll('.connect-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const targetId = e.currentTarget?.getAttribute('data-id');
+                    if (targetId) connectToPlayer(targetId);
+                });
+            });
+        }
+        function sendInvite(targetPeerId) {
+            if (!socket) return;
+            
+            socket.emit("invite", { targetPeerId });
+            simulation.inGameConsole(`Invite sent to ${onlinePlayers.get(targetPeerId)?.name || 'player'}`);
+        }
+
+        function connectToPlayer(targetPeerId) {
+            const remoteIdInput = document.getElementById("p2p-remote-id");
+            remoteIdInput.value = targetPeerId;
+            
+            updateStatus("Connecting...", "status-connecting");
+            const connection = connManager.connectTo(targetPeerId);
+
+            connection.on("open", () => setupConnection(connection));
+            connection.on("error", (err) => {
+                log("Connection failed: " + err, "error");
+                updateStatus("Connection failed", "status-disconnected");
+            });
+            
+            if (socket) {
+                socket.emit("joinParty", { leaderPeerId: targetPeerId });
+            }
+        }
 		function log(message, level = "info") {
             if (!CONFIG.debug) return;
             let lineInfo = "";
@@ -1231,6 +1412,13 @@ function initP2P() {
                 connections = connections.filter(c => c !== connection);
                 updateConnectionStatus();
                 broadcastPeerList();
+                
+                if (connections.length === 0 && socket) {
+                    socket.emit("register", {
+                        name: window.username,
+                        peerId: peer.id
+                    });
+                }
             });
             connection.on("error", () => {
                 connections = connections.filter(c => c !== connection);
@@ -1444,18 +1632,22 @@ function initP2P() {
             log("PeerJS initialized with ID: " + id);
             requestAnimationFrame(monitorGameState);
             monitorMeshHealth();
+            if (typeof io !== "undefined") {
+                connectToPresenceServer();
+            } else {
+                console.log("Presence server unavailable - using direct P2P connections only");
+            }
         })
         .onConnection((connection) => {
             setupConnection(connection);
         })
         .onError((err) => {
             if (err == "disconnected") {
-            simulation.inGameConsole("connection probably lost. attemping reconnect")
-            reconnect();
+                simulation.inGameConsole("connection probably lost. attemping reconnect")
+                reconnect();
             }
             updateStatus("Error: " + err.type, "status-disconnected");
         });
-
 		document.getElementById("p2p-connect").addEventListener("click", () => {
 			const remoteId = document.getElementById("p2p-remote-id").value.trim();
 			if (!remoteId) return alert("Please enter a Peer ID");
