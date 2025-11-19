@@ -9065,6 +9065,10 @@ function initP2P() {
 			me.do = function () {
 				this.cycle++;
                 if(me.level != level.onLevel) return;
+				if (this.isShielded) {
+					this.isShielded = false;
+					this.removeConsBB();
+				}
 				me.pos.x = this.position.x;
 				me.pos.y = mobBody.position.y - this.yOff;
 				me.Vx = this.velocity.x;
