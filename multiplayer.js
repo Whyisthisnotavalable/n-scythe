@@ -11,59 +11,73 @@ if (typeof Peer === "undefined") {
 function initP2P() {
 	(function () {
         let onlinePlayers = new Map();
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBYuLYTAycjGjMzdvDTrrEqLESSeAkqH2M",
+            authDomain: "test-presence-79f33.firebaseapp.com",
+            databaseURL: "https://test-presence-79f33-default-rtdb.firebaseio.com",
+            projectId: "test-presence-79f33",
+            storageBucket: "test-presence-79f33.firebasestorage.app",
+            messagingSenderId: "851958370898",
+            appId: "1:851958370898:web:8bd106b8da99bbb8cfc58b",
+            measurementId: "G-Q1KQYWQNBZ"
+        };
+        const PRESENCE_ROOT = "presence";
+        const INVITES_ROOT = "invites";
 
-		const FIREBASE_CONFIG = {
-		  apiKey: "AIzaSyBYuLYTAycjGjMzdvDTrrEqLESSeAkqH2M",
-		  authDomain: "test-presence-79f33.firebaseapp.com",
-		  databaseURL: "https://test-presence-79f33-default-rtdb.firebaseio.com",
-		  projectId: "test-presence-79f33",
-		  storageBucket: "test-presence-79f33.firebasestorage.app",
-		  messagingSenderId: "851958370898",
-		  appId: "1:851958370898:web:8bd106b8da99bbb8cfc58b",
-		  measurementId: "G-Q1KQYWQNBZ"
-		};
+        let firebaseApp = null;
+        let firebaseDb = null;
+        let firebaseAuth = null;
+        let presenceHeartbeat = null;
+        let presenceListenerRef = null;
+        let invitesListenerRef = null;
 
-		const PRESENCE_ROOT = "presence";
-		const INVITES_ROOT = "invites";
-
-		let firebaseApp = null;
-		let firebaseDb = null;
-		let firebaseAuth = null;
-		let presenceHeartbeat = null;
-		let presenceListenerRef = null;
-		let invitesListenerRef = null;
-
-		function loadScript(src, onload) {
-			const s = document.createElement("script");
-			s.src = src;
-			s.async = false;
-			s.onload = onload;
-			s.onerror = function(e) { console.error("Failed to load script", src, e); if (onload) onload(); };
-			document.head.appendChild(s);
-		}
+        function loadScript(src, onload) {
+            const s = document.createElement("script");
+            s.src = src;
+            s.async = false;
+            s.onload = onload;
+            s.onerror = function(e) { 
+                console.error("Failed to load script", src, e); 
+                if (onload) onload(); 
+            };
+            document.head.appendChild(s);
+        }
 
         function connectToPresenceServer() {
-            log('Starting Firebase connection...');
+            console.log('[Firebase] Starting Firebase connection...');
 
-            if (typeof firebase !== "undefined" && firebase && firebase.apps && firebase.apps.length) {
-                log('Firebase already loaded');
+            if (typeof firebase !== "undefined" && firebase.apps && firebase.apps.length && 
+                firebase.database && firebase.auth) {
+                console.log('[Firebase] Firebase already loaded');
                 initFirebasePresence();
                 return;
             }
 
-            log('Loading Firebase SDKs...');
+            console.log('[Firebase] Loading Firebase SDKs...');
 
             loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js", () => {
-                log('✓ firebase-app loaded');
+                console.log('[Firebase] firebase-app loaded');
+                
+                if (typeof firebase === "undefined") {
+                    console.error('[Firebase] Firebase not loaded properly');
+                    return;
+                }
+                
                 loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js", () => {
-                    log('✓ firebase-auth loaded');
+                    console.log('[Firebase] firebase-auth loaded');
                     loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js", () => {
-                        log('✓ firebase-database loaded');
+                        console.log('[Firebase] firebase-database loaded');
+                        
+                        if (!firebase.auth || !firebase.database) {
+                            console.error('[Firebase] Firebase modules not loaded properly');
+                            return;
+                        }
+                        
                         try {
-                            log('Attempting to initialize Firebase...');
+                            console.log('[Firebase] Attempting to initialize Firebase...');
                             initFirebasePresence();
                         } catch (e) {
-                            log(`Failed to init Firebase: ${e.message}`, 'error');
+                            console.error('[Firebase] Failed to init Firebase:', e);
                         }
                     });
                 });
@@ -71,42 +85,51 @@ function initP2P() {
         }
 
         async function initFirebasePresence() {
-            if (!window.firebase) {
-                log("Firebase SDK not loaded", 'error');
-                return;
-            }
-
             try {
-                log('Initializing Firebase app...');
+                console.log('[Firebase] Checking Firebase availability...');
+                
+                if (typeof firebase === "undefined" || !firebase.initializeApp) {
+                    console.error('[Firebase] Firebase SDK not loaded properly');
+                    return;
+                }
+
+                console.log('[Firebase] Initializing Firebase app...');
 
                 if (!firebase.apps.length) {
+                    console.log('[Firebase] Initializing new Firebase app...');
                     firebase.initializeApp(FIREBASE_CONFIG);
-                    log('Firebase app initialized');
+                    console.log('[Firebase] Firebase app initialized');
                 } else {
-                    log('Using existing Firebase app');
+                    console.log('[Firebase] Using existing Firebase app');
+                    firebaseApp = firebase.apps[0];
                 }
 
                 firebaseApp = firebase.app();
                 firebaseDb = firebase.database();
                 firebaseAuth = firebase.auth();
 
-                log('Signing in anonymously...');
-                try {
-                    const userCredential = await firebaseAuth.signInAnonymously();
-                    log(`✓ Signed in as: ${userCredential.user.uid}`);
-                } catch (authError) {
-                    log(`Auth error: ${authError.message}`, 'error');
+                if (!firebaseDb || !firebaseAuth) {
+                    console.error('[Firebase] Firebase services not available');
                     return;
                 }
 
-                log('Setting up presence listener...');
+                console.log('[Firebase] Signing in anonymously...');
+                try {
+                    const userCredential = await firebaseAuth.signInAnonymously();
+                    console.log(`[Firebase] ✓ Signed in as: ${userCredential.user.uid}`);
+                } catch (authError) {
+                    console.error('[Firebase] Auth error:', authError);
+                    return;
+                }
+
+                console.log('[Firebase] Setting up presence listener...');
                 const presenceRef = firebaseDb.ref(PRESENCE_ROOT);
                 presenceListenerRef = presenceRef;
 
                 presenceRef.on("value", (snap) => {
                     const val = snap.val();
                     const count = val ? Object.keys(val).length : 0;
-                    log(`Presence update: ${count} players online`);
+                    console.log(`[Firebase] Presence update: ${count} players online`);
 
                     if (!val) {
                         onlinePlayers.clear();
@@ -118,7 +141,6 @@ function initP2P() {
                     Object.keys(val).forEach(k => {
                         const p = val[k];
                         if (p && p.peerId) {
-
                             if (Date.now() - (p.lastSeen || 0) < 120000) {
                                 players.push(p);
                             }
@@ -128,15 +150,14 @@ function initP2P() {
                 });
 
                 if (peer && peer.id) {
-                    log(`PeerJS already ready: ${peer.id}`);
+                    console.log(`[Firebase] PeerJS already ready: ${peer.id}`);
                     registerMyPresence();
                     listenForMyInvites();
                 } else {
-
-                    log('Waiting for PeerJS ID...');
+                    console.log('[Firebase] Waiting for PeerJS ID...');
                     const checkPeer = () => {
                         if (peer && peer.id) {
-                            log(`✓ PeerJS became ready: ${peer.id}`);
+                            console.log(`[Firebase] ✓ PeerJS became ready: ${peer.id}`);
                             registerMyPresence();
                             listenForMyInvites();
                             return true;
@@ -145,35 +166,33 @@ function initP2P() {
                     };
 
                     if (!checkPeer()) {
-
                         let attempts = 0;
                         const poll = setInterval(() => {
                             attempts++;
                             if (checkPeer()) {
                                 clearInterval(poll);
-                                log('PeerJS registered successfully');
-                            } else if (attempts > 20) { 
-
+                                console.log('[Firebase] PeerJS registered successfully');
+                            } else if (attempts > 20) {
                                 clearInterval(poll);
-                                log('PeerJS not ready after 10 seconds', 'warn');
+                                console.warn('[Firebase] PeerJS not ready after 10 seconds');
                             }
                         }, 500);
                     }
                 }
 
             } catch (err) {
-                log(`Error initializing Firebase: ${err.message}`, 'error');
+                console.error('[Firebase] Error initializing Firebase:', err);
             }
         }
 
         function registerMyPresence() {
             if (!firebaseDb) {
-                log('No Firebase database', 'error');
+                console.error('[Firebase] No Firebase database');
                 return;
             }
 
             if (!peer || !peer.id) {
-                log('No PeerJS ID', 'error');
+                console.error('[Firebase] No PeerJS ID');
                 return;
             }
 
@@ -186,40 +205,37 @@ function initP2P() {
                 timestamp: Date.now()
             };
 
-            log(`Registering presence for: ${myId} (${payload.name})`);
+            console.log(`[Firebase] Registering presence for: ${myId} (${payload.name})`);
 
             myRef.once('value').then(snap => {
                 if (snap.exists()) {
-                    log('Already registered, updating...');
+                    console.log('[Firebase] Already registered, updating...');
                 }
 
                 return myRef.set(payload);
             })
             .then(() => {
-                log('✓ Presence registered/updated');
+                console.log('[Firebase] ✓ Presence registered/updated');
 
                 myRef.onDisconnect().remove()
-                    .then(() => log('Disconnect handler set'))
-                    .catch(e => log(`Disconnect error: ${e.message}`, 'warn'));
+                    .then(() => console.log('[Firebase] Disconnect handler set'))
+                    .catch(e => console.warn('[Firebase] Disconnect error:', e.message));
 
                 if (presenceHeartbeat) clearInterval(presenceHeartbeat);
                 presenceHeartbeat = setInterval(() => {
                     myRef.update({ 
                         lastSeen: Date.now(),
                         name: window.username || "Anonymous" 
-
                     })
                     .then(() => {
-
-                        if (window.debugFirebase) log('Heartbeat sent');
+                        if (window.debugFirebase) console.log('[Firebase] Heartbeat sent');
                     })
-                    .catch(e => log(`Heartbeat failed: ${e.message}`, 'warn'));
-                }, 10000); 
+                    .catch(e => console.warn('[Firebase] Heartbeat failed:', e.message));
+                }, 10000);
 
-                log('Heartbeat started (10s interval)');
+                console.log('[Firebase] Heartbeat started (10s interval)');
 
                 if (typeof updateOnlinePlayersList === "function") {
-
                     onlinePlayers.set(myId, {
                         name: payload.name,
                         peerId: myId,
@@ -229,84 +245,82 @@ function initP2P() {
                 }
             })
             .catch(err => {
-                log(`Failed to register presence: ${err.message}`, 'error');
+                console.error('[Firebase] Failed to register presence:', err.message);
             });
         }
 
-		function unregisterMyPresence() {
-			if (!firebaseDb || !peer || !peer.id) return;
-			const myRef = firebaseDb.ref(`${PRESENCE_ROOT}/${peer.id}`);
-			myRef.remove().catch(() => {});
-			if (presenceHeartbeat) {
-				clearInterval(presenceHeartbeat);
-				presenceHeartbeat = null;
-			}
-			if (invitesListenerRef) {
-				try { invitesListenerRef.off(); } catch (e) {}
-				invitesListenerRef = null;
-			}
-			if (presenceListenerRef) {
-				try { presenceListenerRef.off(); } catch (e) {}
-				presenceListenerRef = null;
-			}
-		}
+        function unregisterMyPresence() {
+            if (!firebaseDb || !peer || !peer.id) return;
+            const myRef = firebaseDb.ref(`${PRESENCE_ROOT}/${peer.id}`);
+            myRef.remove().catch(() => {});
+            if (presenceHeartbeat) {
+                clearInterval(presenceHeartbeat);
+                presenceHeartbeat = null;
+            }
+            if (invitesListenerRef) {
+                try { invitesListenerRef.off(); } catch (e) {}
+                invitesListenerRef = null;
+            }
+            if (presenceListenerRef) {
+                try { presenceListenerRef.off(); } catch (e) {}
+                presenceListenerRef = null;
+            }
+        }
 
-		function updateOnlinePlayers(players) {
-			if (!players) return;
-			onlinePlayers.clear();
-			players.forEach(player => {
-				if (player && player.peerId) onlinePlayers.set(player.peerId, player);
-			});
-			if (typeof updateOnlinePlayersList === "function") updateOnlinePlayersList();
-		}
+        function updateOnlinePlayers(players) {
+            if (!players) return;
+            onlinePlayers.clear();
+            players.forEach(player => {
+                if (player && player.peerId) onlinePlayers.set(player.peerId, player);
+            });
+            if (typeof updateOnlinePlayersList === "function") updateOnlinePlayersList();
+        }
 
-		function listenForMyInvites() {
-			if (!firebaseDb || !peer || !peer.id) return;
-			const myInvRef = firebaseDb.ref(`${INVITES_ROOT}/${peer.id}`);
-			invitesListenerRef = myInvRef;
-			myInvRef.on("child_added", (snap) => {
-				const invite = snap.val();
-				if (!invite) return;
-				try {
-					const accept = confirm(`${invite.name} wants to play with you. Accept invitation?`);
-					if (accept) {
-						connectToPlayer(invite.fromPeerId || invite.peerId);
-					} else {
+        function listenForMyInvites() {
+            if (!firebaseDb || !peer || !peer.id) return;
+            const myInvRef = firebaseDb.ref(`${INVITES_ROOT}/${peer.id}`);
+            invitesListenerRef = myInvRef;
+            myInvRef.on("child_added", (snap) => {
+                const invite = snap.val();
+                if (!invite) return;
+                try {
+                    const accept = confirm(`${invite.name} wants to play with you. Accept invitation?`);
+                    if (accept) {
+                        connectToPlayer(invite.fromPeerId || invite.peerId);
+                    }
+                } catch (err) {
+                    console.error('[Firebase] Error handling invite:', err);
+                } finally {
+                    snap.ref.remove().catch(() => {});
+                }
+            });
+        }
 
-					}
-				} catch (err) {
-					log("Error handling invite: " + err);
-				} finally {
-					snap.ref.remove().catch(() => {});
-				}
-			});
-		}
+        function sendInvite(targetPeerId) {
+            if (!firebaseDb || !peer || !peer.id) {
+                console.log('[Firebase] Cannot send invite: Firebase or peer not ready');
+                return;
+            }
+            const inviteRef = firebaseDb.ref(`${INVITES_ROOT}/${targetPeerId}/${peer.id}`);
+            const payload = {
+                fromPeerId: peer.id,
+                name: window.username || "Anonymous",
+                created: Date.now()
+            };
+            inviteRef.set(payload).catch(err => console.error('[Firebase] Failed to send invite:', err));
+        }
 
-		function sendInvite(targetPeerId) {
-			if (!firebaseDb || !peer || !peer.id) {
-				log("Cannot send invite: Firebase or peer not ready");
-				return;
-			}
-			const inviteRef = firebaseDb.ref(`${INVITES_ROOT}/${targetPeerId}/${peer.id}`);
-			const payload = {
-				fromPeerId: peer.id,
-				name: window.username || "Anonymous",
-				created: Date.now()
-			};
-			inviteRef.set(payload).catch(err => log("Failed to send invite: " + err));
-		}
+        function sendJoinParty(leaderPeerId) {
+            connectToPlayer(leaderPeerId);
+        }
 
-		function sendJoinParty(leaderPeerId) {
-			connectToPlayer(leaderPeerId);
-		}
+        window.addEventListener("beforeunload", () => {
+            try { unregisterMyPresence(); } catch (e) {}
+        });
 
-		window.addEventListener("beforeunload", () => {
-			try { unregisterMyPresence(); } catch (e) {}
-		});
-
-		try {
-			connectToPresenceServer();
-		} catch (e) {}
+        try {
+            connectToPresenceServer();
+        } catch (e) {}
 
 		class P2PConnectionManager {
             constructor(peer, config) {
@@ -399,6 +413,7 @@ function initP2P() {
         window.seedUpdateInProgress = false;
         window.lastSeedUpdateTime = 0;
         window.remotePlayerLevel = new Map();
+        window.debugFirebase = true;
         const seedUpdateCD = 1000;
 		const BinaryProtocol = {
 			writeUint8: (view, offset, value) => {
@@ -743,7 +758,8 @@ function initP2P() {
             } catch (_) {
                 lineInfo = "";
             }
-            const prefix = `[P2P${lineInfo}] `;
+            const isFirebaseLog = message.includes('Firebase') || message.includes('firebase');
+            const prefix = isFirebaseLog ? '[Firebase] ' : `[P2P${lineInfo}] `;
             switch (level) {
                 case "error":
                     console.error(prefix + message);
