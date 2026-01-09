@@ -3,91 +3,312 @@ if (typeof Peer === "undefined") {
     peerScript.src = "https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js";
     peerScript.onload = () => {
         initP2P();
-        const socketScript = document.createElement("script");
-        socketScript.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
-        document.head.appendChild(socketScript);
     };
     document.head.appendChild(peerScript);
 } else {
     initP2P();
-    if (typeof io === "undefined") {
-        const socketScript = document.createElement("script");
-        socketScript.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
-        socketScript.onload = () => {
-            console.log("Socket.io loaded - presence server available");
-        };
-        document.head.appendChild(socketScript);
-    }
 }
 function initP2P() {
 	(function () {
-        const PRESENCE_SERVER = "https://presence-server-production-5dfe.up.railway.app";
-        let socket = null;
         let onlinePlayers = new Map();
 
+		const FIREBASE_CONFIG = {
+		  apiKey: "AIzaSyBYuLYTAycjGjMzdvDTrrEqLESSeAkqH2M",
+		  authDomain: "test-presence-79f33.firebaseapp.com",
+		  databaseURL: "https://test-presence-79f33-default-rtdb.firebaseio.com",
+		  projectId: "test-presence-79f33",
+		  storageBucket: "test-presence-79f33.firebasestorage.app",
+		  messagingSenderId: "851958370898",
+		  appId: "1:851958370898:web:8bd106b8da99bbb8cfc58b",
+		  measurementId: "G-Q1KQYWQNBZ"
+		};
+
+		const PRESENCE_ROOT = "presence";
+		const INVITES_ROOT = "invites";
+
+		let firebaseApp = null;
+		let firebaseDb = null;
+		let firebaseAuth = null;
+		let presenceHeartbeat = null;
+		let presenceListenerRef = null;
+		let invitesListenerRef = null;
+
+		function loadScript(src, onload) {
+			const s = document.createElement("script");
+			s.src = src;
+			s.async = false;
+			s.onload = onload;
+			s.onerror = function(e) { console.error("Failed to load script", src, e); if (onload) onload(); };
+			document.head.appendChild(s);
+		}
+
         function connectToPresenceServer() {
-            if (typeof io === "undefined") {
-                console.log("Socket.io not available - presence server disabled");
+            log('Starting Firebase connection...');
+
+            if (typeof firebase !== "undefined" && firebase && firebase.apps && firebase.apps.length) {
+                log('Firebase already loaded');
+                initFirebasePresence();
                 return;
             }
-            
+
+            log('Loading Firebase SDKs...');
+
+            loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js", () => {
+                log('✓ firebase-app loaded');
+                loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js", () => {
+                    log('✓ firebase-auth loaded');
+                    loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js", () => {
+                        log('✓ firebase-database loaded');
+                        try {
+                            log('Attempting to initialize Firebase...');
+                            initFirebasePresence();
+                        } catch (e) {
+                            log(`Failed to init Firebase: ${e.message}`, 'error');
+                        }
+                    });
+                });
+            });
+        }
+
+        async function initFirebasePresence() {
+            if (!window.firebase) {
+                log("Firebase SDK not loaded", 'error');
+                return;
+            }
+
             try {
-                socket = io(PRESENCE_SERVER, {
-                    transports: ["websocket"],
-                    upgrade: false,
-                });
-                
-                socket.on("connect", () => {
-                    log("Connected to presence server");
-                    if (peer && peer.id) {
-                        socket.emit("register", {
-                            name: window.username,
-                            peerId: peer.id
-                        });
+                log('Initializing Firebase app...');
+
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(FIREBASE_CONFIG);
+                    log('Firebase app initialized');
+                } else {
+                    log('Using existing Firebase app');
+                }
+
+                firebaseApp = firebase.app();
+                firebaseDb = firebase.database();
+                firebaseAuth = firebase.auth();
+
+                log('Signing in anonymously...');
+                try {
+                    const userCredential = await firebaseAuth.signInAnonymously();
+                    log(`✓ Signed in as: ${userCredential.user.uid}`);
+                } catch (authError) {
+                    log(`Auth error: ${authError.message}`, 'error');
+                    return;
+                }
+
+                log('Setting up presence listener...');
+                const presenceRef = firebaseDb.ref(PRESENCE_ROOT);
+                presenceListenerRef = presenceRef;
+
+                presenceRef.on("value", (snap) => {
+                    const val = snap.val();
+                    const count = val ? Object.keys(val).length : 0;
+                    log(`Presence update: ${count} players online`);
+
+                    if (!val) {
+                        onlinePlayers.clear();
+                        if (typeof updateOnlinePlayersList === "function") updateOnlinePlayersList();
+                        return;
                     }
-                });
-                
-                socket.on("playerList", (players) => {
+
+                    const players = [];
+                    Object.keys(val).forEach(k => {
+                        const p = val[k];
+                        if (p && p.peerId) {
+
+                            if (Date.now() - (p.lastSeen || 0) < 120000) {
+                                players.push(p);
+                            }
+                        }
+                    });
                     updateOnlinePlayers(players);
                 });
-                
-                socket.on("invite", (fromPlayer) => {
-                    handleInvite(fromPlayer);
-                });
-                
-                socket.on("disconnect", () => {
-                    log("Disconnected from presence server");
-                    setTimeout(connectToPresenceServer, 5000);
-                });
-                
-            } catch (error) {
-                log("Failed to connect to presence server: " + error);
+
+                if (peer && peer.id) {
+                    log(`PeerJS already ready: ${peer.id}`);
+                    registerMyPresence();
+                    listenForMyInvites();
+                } else {
+
+                    log('Waiting for PeerJS ID...');
+                    const checkPeer = () => {
+                        if (peer && peer.id) {
+                            log(`✓ PeerJS became ready: ${peer.id}`);
+                            registerMyPresence();
+                            listenForMyInvites();
+                            return true;
+                        }
+                        return false;
+                    };
+
+                    if (!checkPeer()) {
+
+                        let attempts = 0;
+                        const poll = setInterval(() => {
+                            attempts++;
+                            if (checkPeer()) {
+                                clearInterval(poll);
+                                log('PeerJS registered successfully');
+                            } else if (attempts > 20) { 
+
+                                clearInterval(poll);
+                                log('PeerJS not ready after 10 seconds', 'warn');
+                            }
+                        }, 500);
+                    }
+                }
+
+            } catch (err) {
+                log(`Error initializing Firebase: ${err.message}`, 'error');
             }
         }
 
-        function updateOnlinePlayers(players) {
-            if (!players) return;
-            onlinePlayers.clear();
-            players.forEach(player => {
-                onlinePlayers.set(player.peerId, player);
-            });
-            updateOnlinePlayersList();
-        }
-        function handleInvite(fromPlayer) {
-            if (confirm(`${fromPlayer.name} wants to play with you. Accept invitation?`)) {
-                if (socket) {
-                    socket.emit("joinParty", { leaderPeerId: fromPlayer.peerId });
+        function registerMyPresence() {
+            if (!firebaseDb) {
+                log('No Firebase database', 'error');
+                return;
+            }
+
+            if (!peer || !peer.id) {
+                log('No PeerJS ID', 'error');
+                return;
+            }
+
+            const myId = peer.id;
+            const myRef = firebaseDb.ref(`${PRESENCE_ROOT}/${myId}`);
+            const payload = {
+                name: window.username || "Anonymous",
+                peerId: myId,
+                lastSeen: Date.now(),
+                timestamp: Date.now()
+            };
+
+            log(`Registering presence for: ${myId} (${payload.name})`);
+
+            myRef.once('value').then(snap => {
+                if (snap.exists()) {
+                    log('Already registered, updating...');
                 }
-                connectToPlayer(fromPlayer.peerId);
-            }
+
+                return myRef.set(payload);
+            })
+            .then(() => {
+                log('✓ Presence registered/updated');
+
+                myRef.onDisconnect().remove()
+                    .then(() => log('Disconnect handler set'))
+                    .catch(e => log(`Disconnect error: ${e.message}`, 'warn'));
+
+                if (presenceHeartbeat) clearInterval(presenceHeartbeat);
+                presenceHeartbeat = setInterval(() => {
+                    myRef.update({ 
+                        lastSeen: Date.now(),
+                        name: window.username || "Anonymous" 
+
+                    })
+                    .then(() => {
+
+                        if (window.debugFirebase) log('Heartbeat sent');
+                    })
+                    .catch(e => log(`Heartbeat failed: ${e.message}`, 'warn'));
+                }, 10000); 
+
+                log('Heartbeat started (10s interval)');
+
+                if (typeof updateOnlinePlayersList === "function") {
+
+                    onlinePlayers.set(myId, {
+                        name: payload.name,
+                        peerId: myId,
+                        lastSeen: payload.lastSeen
+                    });
+                    updateOnlinePlayersList();
+                }
+            })
+            .catch(err => {
+                log(`Failed to register presence: ${err.message}`, 'error');
+            });
         }
-        function handleInvite(fromPlayer) {
-            if (confirm(`${fromPlayer.name} wants to play with you. Accept invitation?`)) {
-                socket.emit("joinParty", { leaderPeerId: fromPlayer.peerId });
-                connectToPlayer(fromPlayer.peerId);
-            }
-        }
-        class P2PConnectionManager {
+
+		function unregisterMyPresence() {
+			if (!firebaseDb || !peer || !peer.id) return;
+			const myRef = firebaseDb.ref(`${PRESENCE_ROOT}/${peer.id}`);
+			myRef.remove().catch(() => {});
+			if (presenceHeartbeat) {
+				clearInterval(presenceHeartbeat);
+				presenceHeartbeat = null;
+			}
+			if (invitesListenerRef) {
+				try { invitesListenerRef.off(); } catch (e) {}
+				invitesListenerRef = null;
+			}
+			if (presenceListenerRef) {
+				try { presenceListenerRef.off(); } catch (e) {}
+				presenceListenerRef = null;
+			}
+		}
+
+		function updateOnlinePlayers(players) {
+			if (!players) return;
+			onlinePlayers.clear();
+			players.forEach(player => {
+				if (player && player.peerId) onlinePlayers.set(player.peerId, player);
+			});
+			if (typeof updateOnlinePlayersList === "function") updateOnlinePlayersList();
+		}
+
+		function listenForMyInvites() {
+			if (!firebaseDb || !peer || !peer.id) return;
+			const myInvRef = firebaseDb.ref(`${INVITES_ROOT}/${peer.id}`);
+			invitesListenerRef = myInvRef;
+			myInvRef.on("child_added", (snap) => {
+				const invite = snap.val();
+				if (!invite) return;
+				try {
+					const accept = confirm(`${invite.name} wants to play with you. Accept invitation?`);
+					if (accept) {
+						connectToPlayer(invite.fromPeerId || invite.peerId);
+					} else {
+
+					}
+				} catch (err) {
+					log("Error handling invite: " + err);
+				} finally {
+					snap.ref.remove().catch(() => {});
+				}
+			});
+		}
+
+		function sendInvite(targetPeerId) {
+			if (!firebaseDb || !peer || !peer.id) {
+				log("Cannot send invite: Firebase or peer not ready");
+				return;
+			}
+			const inviteRef = firebaseDb.ref(`${INVITES_ROOT}/${targetPeerId}/${peer.id}`);
+			const payload = {
+				fromPeerId: peer.id,
+				name: window.username || "Anonymous",
+				created: Date.now()
+			};
+			inviteRef.set(payload).catch(err => log("Failed to send invite: " + err));
+		}
+
+		function sendJoinParty(leaderPeerId) {
+			connectToPlayer(leaderPeerId);
+		}
+
+		window.addEventListener("beforeunload", () => {
+			try { unregisterMyPresence(); } catch (e) {}
+		});
+
+		try {
+			connectToPresenceServer();
+		} catch (e) {}
+
+		class P2PConnectionManager {
             constructor(peer, config) {
                 this.peer = peer;
                 this.config = config || {};
@@ -409,13 +630,6 @@ function initP2P() {
             window.oldUsername = window.username;
             localStorage.setItem('p2pUsername', username);
             sendUsernameUpdate();
-            
-            if (socket && peer.id) {
-                socket.emit("register", {
-                    name: window.username,
-                    peerId: peer.id
-                });
-            }
         });
         const savedUsername = localStorage.getItem('p2pUsername');
         if (savedUsername) {
@@ -502,13 +716,6 @@ function initP2P() {
                 });
             });
         }
-        function sendInvite(targetPeerId) {
-            if (!socket) return;
-            
-            socket.emit("invite", { targetPeerId });
-            simulation.inGameConsole(`Invite sent to ${onlinePlayers.get(targetPeerId)?.name || 'player'}`);
-        }
-
         function connectToPlayer(targetPeerId) {
             const remoteIdInput = document.getElementById("p2p-remote-id");
             remoteIdInput.value = targetPeerId;
@@ -521,10 +728,6 @@ function initP2P() {
                 log("Connection failed: " + err, "error");
                 updateStatus("Connection failed", "status-disconnected");
             });
-            
-            if (socket) {
-                socket.emit("joinParty", { leaderPeerId: targetPeerId });
-            }
         }
 		function log(message, level = "info") {
             if (!CONFIG.debug) return;
@@ -1412,13 +1615,6 @@ function initP2P() {
                 connections = connections.filter(c => c !== connection);
                 updateConnectionStatus();
                 broadcastPeerList();
-                
-                if (connections.length === 0 && socket) {
-                    socket.emit("register", {
-                        name: window.username,
-                        peerId: peer.id
-                    });
-                }
             });
             connection.on("error", () => {
                 connections = connections.filter(c => c !== connection);
@@ -1630,13 +1826,16 @@ function initP2P() {
             document.getElementById("p2p-id-display").textContent = id;
             updateStatus("Ready to connect", "status-disconnected");
             log("PeerJS initialized with ID: " + id);
+            log(`PeerJS ready with ID: ${id}`);
+            if (firebaseDb && firebaseAuth?.currentUser) {
+                setTimeout(() => {
+                    registerMyPresence();
+                    listenForMyInvites();
+                    log('PeerJS presence registered');
+                }, 1000);
+            }
             requestAnimationFrame(monitorGameState);
             monitorMeshHealth();
-            if (typeof io !== "undefined") {
-                connectToPresenceServer();
-            } else {
-                console.log("Presence server unavailable - using direct P2P connections only");
-            }
         })
         .onConnection((connection) => {
             setupConnection(connection);
