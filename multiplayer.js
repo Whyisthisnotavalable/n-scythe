@@ -269,10 +269,19 @@ function initP2P() {
 
         function updateOnlinePlayers(players) {
             if (!players) return;
-            onlinePlayers.clear();
             players.forEach(player => {
-                if (player && player.peerId) onlinePlayers.set(player.peerId, player);
+                if (player && player.peerId) {
+                    onlinePlayers.set(player.peerId, player);
+                }
             });
+            
+            const currentPlayerIds = players.map(p => p.peerId).filter(Boolean);
+            for (const [peerId, player] of onlinePlayers) {
+                if (!currentPlayerIds.includes(peerId)) {
+                    onlinePlayers.delete(peerId);
+                }
+            }
+            
             if (typeof updateOnlinePlayersList === "function") updateOnlinePlayersList();
         }
 
@@ -594,30 +603,45 @@ function initP2P() {
 		container.id = "multiplayer-details";
 		container.innerHTML = `
             <summary>multiplayer</summary>
-            <div class="details-div" style="max-width: 50rem;">
-                <div class="id-container">
-                    <span>Your ID:</span>
-                    <span id="p2p-id-display">...</span>
-                    <button class="copy-button" id="p2p-copy-id">Copy</button>
-                </div>
-                <div>Client ID: <span id="client-id-display">${clientId}</span></div>
-                <div>
-                    <label for="p2p-username">Username:</label>
-                    <input type="text" id="p2p-username" placeholder="Enter username" maxlength="20">
+            <div class="details-div" style="max-width: 30rem; font-size: 13px;">
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+                            <span style="font-weight: bold; font-size: 12px;">ID:</span>
+                            <span id="p2p-id-display" style="font-family: monospace; background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; flex: 1;">...</span>
+                            <button class="copy-button" id="p2p-copy-id" style="padding: 2px 8px; font-size: 11px;">Copy</button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+                            <span style="font-weight: bold; font-size: 12px;">Username:</span>
+                            <input type="text" id="p2p-username" placeholder="Your name" maxlength="20" style="flex: 1; padding: 2px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;">
+                        </div>
+                    </div>
+                    
+                    <div style="flex-shrink: 0;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 2px;">Client ID:</div>
+                        <div id="client-id-display" style="font-family: monospace; background: rgba(0,0,0,0.1); padding: 2px 8px; border-radius: 3px; text-align: center;">${clientId}</div>
+                    </div>
                 </div>
                 
-                <div id="online-players-section" style="margin: 10px 0; display: none;">
-                    <h3>Online Players (<span id="online-count">0</span>)</h3>
-                    <div id="online-players-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: rgba(255,255,255,0.1); border-radius: 4px;">
-                        <div style="text-align: center; color: #888; padding: 10px;" id="no-players-msg">
+                <div id="online-players-section" style="margin: 8px 0; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <h3 style="margin: 0; font-size: 13px; font-weight: bold;">Online Players (<span id="online-count">0</span>)</h3>
+                    </div>
+                    <div id="online-players-list" style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 3px; font-size: 12px;">
+                        <div style="text-align: center; color: #888; padding: 8px; font-size: 11px;" id="no-players-msg">
                             No other players online
                         </div>
                     </div>
                 </div>
                 
-                <input type="text" id="p2p-remote-id" placeholder="Friend's ID">
-                <button id="p2p-connect" class="connection-button">Connect</button>
-                <div id="p2p-status">Status: <span class="status-disconnected">Disconnected</span></div>
+                <div style="display: flex; gap: 4px; margin-top: 8px;">
+                    <input type="text" id="p2p-remote-id" placeholder="Friend's ID" style="flex: 1; padding: 3px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;">
+                    <button id="p2p-connect" class="connection-button" style="padding: 3px 10px; font-size: 12px;">Connect</button>
+                </div>
+                
+                <div id="p2p-status" style="margin-top: 6px; font-size: 12px; padding: 3px 6px; background: rgba(0,0,0,0.05); border-radius: 3px;">
+                    Status: <span class="status-disconnected">Disconnected</span>
+                </div>
             </div>
         `;
 		const infoSection = document.getElementById('info');
@@ -672,31 +696,80 @@ function initP2P() {
 		}
         function updateOnlinePlayersList() {
             const section = document.getElementById('online-players-section');
-            const list = document.getElementById('online-players-list');
             const countElement = document.getElementById('online-count');
-            const noPlayersMsg = document.getElementById('no-players-msg');
-            if (!section || !list || !countElement || !noPlayersMsg) {
+            
+            if (!section || !countElement) {
                 console.warn("updateOnlinePlayersList: UI elements not ready yet");
                 return;
             }
+            
             const playersSnapshot = Array.from(onlinePlayers.values());
             const otherPlayers = playersSnapshot.filter(p => p && p.peerId && p.peerId !== peer.id);
+            
             if (otherPlayers.length === 0) {
-                section.style.display = 'none';
+                // No players online - show the "no players" message
+                section.style.display = 'block'; // Keep section visible
+                countElement.textContent = '0';
+                
+                // Ensure noPlayersMsg exists and is visible
+                let noPlayersMsg = document.getElementById('no-players-msg');
+                if (!noPlayersMsg) {
+                    // Create it if it doesn't exist
+                    const list = document.getElementById('online-players-list') || 
+                                document.createElement('div');
+                    list.id = 'online-players-list';
+                    list.style.cssText = 'max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: rgba(255,255,255,0.1); border-radius: 4px;';
+                    
+                    noPlayersMsg = document.createElement('div');
+                    noPlayersMsg.id = 'no-players-msg';
+                    noPlayersMsg.style.cssText = 'text-align: center; color: #888; padding: 10px;';
+                    noPlayersMsg.textContent = 'No other players online';
+                    
+                    list.appendChild(noPlayersMsg);
+                    section.appendChild(list);
+                } else {
+                    noPlayersMsg.style.display = 'block';
+                }
+                
+                // Clear any existing player list
+                const list = document.getElementById('online-players-list');
+                if (list) {
+                    // Remove all player items but keep the noPlayersMsg
+                    const playerItems = list.querySelectorAll('.player-item');
+                    playerItems.forEach(item => item.remove());
+                }
+                
                 return;
             }
+            
+            // Players are online - hide noPlayersMsg and show the list
             section.style.display = 'block';
             countElement.textContent = otherPlayers.length.toString();
+            
+            const list = document.getElementById('online-players-list');
+            if (!list) {
+                console.warn("online-players-list element not found");
+                return;
+            }
+            
+            // Hide or remove the noPlayersMsg
+            const noPlayersMsg = document.getElementById('no-players-msg');
+            if (noPlayersMsg) {
+                noPlayersMsg.style.display = 'none';
+            }
+            
+            // Clear the list and add players
             list.replaceChildren();
-            noPlayersMsg.style.display = 'none';
+            
             for (const player of otherPlayers) {
                 const playerElement = document.createElement('div');
+                playerElement.className = 'player-item';
                 playerElement.style.cssText = `
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: 8px;
-                    margin: 4px 0;
+                    padding: 6px;
+                    margin: 3px 0;
                     background: rgba(255,255,255,0.05);
                     border-radius: 4px;
                     border: 1px solid rgba(255,255,255,0.1);
@@ -705,7 +778,7 @@ function initP2P() {
                 playerElement.innerHTML = `
                     <div style="flex: 1;">
                         <strong style="color: black;">${player.name || 'Unnamed player'}</strong>
-                        <div style="font-size: 11px; color: #888; margin-top: 2px;">
+                        <div style="font-size: 8px; color: #888; margin-top: 2px;">
                             ${player.peerId?.substring(0, 8) || 'unknown'}...
                             ${player.partyId ? 'In Party' : 'Online'}
                         </div>
@@ -718,12 +791,14 @@ function initP2P() {
 
                 list.appendChild(playerElement);
             }
+            
             list.querySelectorAll('.invite-button').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const targetId = e.currentTarget?.getAttribute('data-id');
                     if (targetId) sendInvite(targetId);
                 });
             });
+            
             list.querySelectorAll('.connect-button').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const targetId = e.currentTarget?.getAttribute('data-id');
