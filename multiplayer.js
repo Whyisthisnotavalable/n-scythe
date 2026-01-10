@@ -497,6 +497,7 @@ function initP2P() {
             rewind: 0x22,
             molecular_mode: 0x23,
             player_skin: 0x24,
+            player_scale: 0x25,
 
             block_create: 0x35,
             block_update: 0x36,
@@ -893,6 +894,13 @@ function initP2P() {
                     }
                     case protocol.player_username_request: {
                         sendUsernameUpdate();
+                        break;
+                    }
+                    case protocol.player_scale: {
+                        const [scale, offset1] = BinaryProtocol.readUint8(view, offset); //can't really do anything because the scaling is relative
+                        if(remotePlayers[senderId]) {
+
+                        }
                         break;
                     }
                     case protocol.player_skin: {
@@ -1370,6 +1378,15 @@ function initP2P() {
             
             sendData(buffer);
         }
+        function sendScale() {
+            const buffer = new ArrayBuffer(3);
+            const view = new DataView(buffer);
+            let offset = BinaryProtocol.writeUint8(view, 0, protocol.player_scale);
+            offset = BinaryProtocol.writeUint8(view, offset, clientId);
+            offset = BinaryProtocol.writeUint8(view, offset, player ? player.scale : 1);
+            
+            sendData(buffer);
+        }
         function sentChat(message) {
             const buffer = new ArrayBuffer(2 + 2 + message.length * 2);
             const view = new DataView(buffer);
@@ -1411,7 +1428,6 @@ function initP2P() {
                 console.log(`[P2P] Created remote block ${blockId} from player ${senderId}`);
             }
         }
-
         function updateRemoteBlock(blockId, x, y, angle, velX, velY, angularVel, senderId, force) {
             const aliased = remoteIdToBlock.get(blockId);
             const block = aliased || body.find(b => b.id === blockId);
@@ -1816,6 +1832,7 @@ function initP2P() {
                 y: Math.abs(v.y) < EPS ? 0 : v.y
             };
         }
+        let oldScale = 1;
 		function monitorGameState(timestamp) {
             if (timestamp - lastUpdateTime >= CONFIG.updateInterval && connections.some(c => c.open)) {
                 lastUpdateTime = timestamp;
@@ -1862,6 +1879,7 @@ function initP2P() {
                         field: input.field || false
                     });
                 }
+                sendScale();
                 if(m.holdingTarget) {
                     if(typeof m.holdingTarget.id == "string") sendBlockUpdate(m.holdingTarget, true);
                 }
@@ -5591,6 +5609,7 @@ function initP2P() {
 					(h / d) * (me.foot.x - me.hip.x) +
 					me.hip.y;
 			};
+            me.scale = 1;
 			me.draw = function () {};
 			me.resetSkin = function () {
 				me.hardLandCDScale = 1;
@@ -7203,7 +7222,173 @@ function initP2P() {
                         // ctx.stroke();
                         ctx.restore();
                     }
-                }
+                },
+                scaleInvariance() {
+                    me.isAltSkin = true
+                    const mass = me.mass
+                    Matter.Body.scale(me, 2 / me.scale, 2 / me.scale); //undoes old scale and set new scale to be 2
+                    Matter.Body.setMass(me, mass);
+                    Matter.Body.setInertia(me, Infinity);
+                    me.scale = 2
+                    me.isDown = false
+
+                    //different scales can sometimes have trouble with jumps so it's a bit faster and higher jumping
+                    me.squirrelJump = 1.05;
+                    me.squirrelFx = 1.05;
+                    me.setMovement()
+                    mobBody.vertices[6].y -= 20
+                    mobBody.vertices[3].y -= 20
+
+                    me.draw = function () {
+                        // simulation.draw.testing();
+                        if (!me.isDown && me.inputDown && !simulation.paused && !simulation.isChoosing) {
+                            if (me.scale === 2) {
+                                me.isDown = true
+                                // me.fieldCDcycle = me.cycle + 23;
+                                me.scale = 0.5
+                                const mass = me.mass
+                                Matter.Body.scale(me, me.scale * me.scale, me.scale * me.scale);
+                                Matter.Body.setMass(me, mass);
+                                Matter.Body.setInertia(me, Infinity);
+                            } else if (me.scale === 0.5) {
+                                //check if space about player is clear
+                                const collides = Matter.Query.ray([...body, ...map], { x: me.pos.x, y: me.bounds.max.y - 30 }, { x: me.pos.x, y: me.bounds.min.y - 150 }, 20)
+                                if (collides.length === 0 || (me.isHolding && collides.length === 1 && collides[0].body === me.holdingTarget)) {//don't check for collisions with a block you are holding
+                                    me.isDown = true
+                                    if (me.onGround) {
+                                        //move player up
+                                        Matter.Body.setPosition(me, { x: me.position.x, y: me.position.y - 100 });
+                                        me.yOff = me.yOffGoal = me.yOffWhen.crouch
+                                    }
+
+                                    // me.fieldCDcycle = me.cycle + 23;
+                                    me.scale = 2
+                                    const mass = me.mass
+                                    Matter.Body.scale(me, me.scale * me.scale, me.scale * me.scale);
+                                    Matter.Body.setMass(me, mass);
+                                    Matter.Body.setInertia(me, Infinity);
+                                }
+                            }
+
+                        } if (!me.inputDown) {
+                            me.isDown = false
+                        }
+
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx / me.scale
+                        ctx.save();
+                        ctx.translate(me.pos.x, me.pos.y); //maybe something should be added to the y translate related to me.scale?
+                        ctx.scale(me.scale, me.scale)
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a4a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                    }
+                },
+                scaleInvariance2() {
+                    me.isAltSkin = true
+                    const mass = me.mass
+
+                    //for some reason adjusting the vertices goes better at large size
+                    Matter.Body.scale(me, 2 / me.scale, 2 / me.scale); //undoes old scale and set new scale to be 2
+                    Matter.Body.setMass(me, mass);
+                    Matter.Body.setInertia(me, Infinity);
+                    me.scale = 2
+                    me.isDown = false
+
+                    //increase angle of the floor connection to allow smoothly walking over bumps
+                    mobBody.vertices[6].y -= 20
+                    mobBody.vertices[3].y -= 20
+
+                    //go back to small size because it fits better
+                    me.scale = 0.3
+                    Matter.Body.scale(me, me.scale / 2, me.scale / 2);
+                    Matter.Body.setMass(me, mass);
+                    Matter.Body.setInertia(me, Infinity);
+                    // me.damageDone *= 3
+                    me.damageReduction *= 0.5
+
+
+                    //different scales can sometimes have trouble with jumps so it's a bit faster and higher jumping
+                    me.squirrelJump = 1.06;
+                    me.squirrelFx = 1.06;
+                    me.setMovement()
+
+                    me.draw = function () {
+                        // simulation.draw.testing();
+                        if (!me.isDown && me.inputDown && !simulation.paused && !simulation.isChoosing) {
+                            if (me.scale === 3) {
+                                me.isDown = true
+                                const scale = 0.3
+                                const mass = me.mass
+                                Matter.Body.scale(me, scale / me.scale, scale / me.scale);
+                                Matter.Body.setMass(me, mass);
+                                Matter.Body.setInertia(me, Infinity);
+                                me.scale = scale
+
+                                me.damageReduction *= 0.5
+                                me.damageDone /= 6
+                            } else if (me.scale === 0.3) {
+                                //check if space above player is clear
+                                const collides = Matter.Query.ray([...body, ...map], { x: me.pos.x, y: me.bounds.max.y - 30 }, { x: me.pos.x, y: me.bounds.min.y - 230 }, 10)
+                                if (collides.length === 0 || (me.isHolding && collides.length === 1 && collides[0].body === me.holdingTarget)) {//don't check for collisions with a block you are holding
+                                    me.isDown = true
+                                    if (me.onGround) {
+                                        //move player up
+                                        Matter.Body.setPosition(me, { x: me.position.x, y: me.position.y - 150 });
+                                        me.yOff = me.yOffGoal = me.yOffWhen.crouch
+                                    }
+
+                                    const scale = 3
+                                    const mass = me.mass
+                                    Matter.Body.scale(me, scale / me.scale, scale / me.scale);
+                                    Matter.Body.setMass(me, mass);
+                                    Matter.Body.setInertia(me, Infinity);
+                                    me.scale = scale
+
+                                    me.damageReduction /= 0.5
+                                    me.damageDone *= 6
+                                }
+                            }
+                        } if (!me.inputDown) {
+                            me.isDown = false
+                        }
+
+                        ctx.fillStyle = me.fillColor;
+                        me.walk_cycle += me.flipLegs * me.Vx / me.scale
+                        ctx.save();
+                        ctx.translate(me.pos.x, me.pos.y); //maybe something should be added to the y translate related to me.scale?
+                        ctx.scale(me.scale, me.scale)
+                        ctx.globalAlpha = (me.immuneCycle < me.cycle) ? 1 : me.cycle % 3 ? 0.1 : 0.65 + 0.1 * Math.random()
+                        me.calcLeg(Math.PI, -3);
+                        me.drawLeg("#4a4a4a");
+                        me.calcLeg(0, 0);
+                        me.drawLeg("#333");
+                        ctx.rotate(me.angle2);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                        ctx.fillStyle = me.bodyGradient
+                        ctx.fill();
+                        ctx.arc(15, 0, 4, 0, 2 * Math.PI);
+                        ctx.strokeStyle = "#333";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.restore();
+                        me.yOff = me.yOff * 0.85 + me.yOffGoal * 0.15; //smoothly move leg height towards height goal
+                    }
+                },
             }
 			Events.on(engine, "collisionStart", function (event) {
 				me.onGroundCheck(event);
@@ -7296,8 +7481,8 @@ function initP2P() {
             }
             me.baseFire = (angle, speed = 30 + 6 * Math.random()) => {
                 b2.nail({
-                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                 }, {
                     x: 0.8 * me.velocity.x + speed * Math.cos(angle),
                     y: 0.5 * me.velocity.y + speed * Math.sin(angle)
@@ -7374,8 +7559,8 @@ function initP2P() {
             },
             me.setGrenadeMode = () => {
                 grenadeDefault = function (where = {
-                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                 }, angle = me.angle2, size = 1) {
                     const em = bullet.length;
                     bullet[em] = Bodies.circle(where.x, where.y, 15, b2.fireAttributes(angle, false, me.id));
@@ -7431,8 +7616,8 @@ function initP2P() {
                     }
                 }
                 grenadeRPG = function (where = {
-                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                 }, angle = me.angle2, size = 1) {
                     const em = bullet.length;
                     bullet[em] = Bodies.circle(where.x, where.y, 15, b2.fireAttributes(angle, false, me.id));
@@ -7503,8 +7688,8 @@ function initP2P() {
                     }
                 }
                 grenadeRPGVacuum = function (where = {
-                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                 }, angle = me.angle2, size = 1) {
                     const em = bullet.length;
                     bullet[em] = Bodies.circle(where.x, where.y, 15, b2.fireAttributes(angle, false, me.id));
@@ -7627,8 +7812,8 @@ function initP2P() {
                     }
                 }
                 grenadeVacuum = function (where = {
-                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                 }, angle = me.angle2, size = 1) {
                     const suckCycles = 40
                     const em = bullet.length;
@@ -7814,7 +7999,7 @@ function initP2P() {
                         };
                     }
                 }
-                grenadeNeutron = function (where = { x: me.pos.x + 30 * Math.cos(me.angle2), y: me.pos.y + 30 * Math.sin(me.angle2) }, angle = me.angle2, size = 1) {
+                grenadeNeutron = function (where = { x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) }, angle = me.angle2, size = 1) {
                     const em = bullet.length;
                     bullet[em] = Bodies.polygon(where.x, where.y, 10, 4, b2.fireAttributes(angle, false, me.id));
                     b2.fireProps((me.crouch ? 45 : 25) / Math.pow(0.92, me.tech.missileCount), me.crouch ? 35 : 20, angle, me); //cd , speed
@@ -8130,7 +8315,7 @@ function initP2P() {
             }
             me.drawHold = function(target, stroke = true) {
                 if (target) {
-                    const eye = 15;
+                    const eye = 15 * me.scale;
                     const len = target.vertices.length - 1;
                     ctx.fillStyle = "rgba(110,170,200," + (0.2 + 0.4 * Math.random()) + ")";
                     ctx.lineWidth = 1;
@@ -8157,17 +8342,54 @@ function initP2P() {
                     }
                 }
             }
+            me.locatePlayer = function() {};
             me.holding = function() {
                 if (me.fireCDcycle < me.cycle) me.fireCDcycle = me.cycle - 1
                 if (me.holdingTarget) {
                     me.energy -= me.fieldRegen;
                     if (me.energy < 0) me.energy = 0;
-                    Matter.Body.setPosition(me.holdingTarget, {
-                        x: me.pos.x + 70 * Math.cos(me.angle2),
-                        y: me.pos.y + 70 * Math.sin(me.angle2)
-                    });
+                    const r = 30 + 40 * me.scale
+                    Matter.Body.setPosition(me.holdingTarget, { x: me.pos.x + r * Math.cos(me.angle2), y: me.pos.y + r * Math.sin(me.angle2) });
                     Matter.Body.setVelocity(me.holdingTarget, me.velocity);
                     Matter.Body.rotate(me.holdingTarget, 0.01 / me.holdingTarget.mass); //gently spin the block
+                    const collide = Matter.Query.collides(me.holdingTarget, mob)
+                    if (me.fieldCDcycle < me.cycle && collide.length) {
+                        let push = function (who) { // similar code to me.pushMobsFacing()
+                            fieldBlockCost = (0.025 + Math.sqrt(who.mass) * Vector.magnitude(Vector.sub(who.velocity, me.velocity)) * 0.002) * me.fieldShieldingScale
+                            if (who.isShielded) fieldBlockCost *= 2; //shielded mobs take more energy to block
+                            me.energy -= fieldBlockCost
+
+                            const unit = Vector.normalise(Vector.sub(me.position, who.position))
+
+                            const massRoot = Math.sqrt(Math.min(12, Math.max(0.15, who.mass))); // masses above 12 can start to overcome the push back
+                            Matter.Body.setVelocity(who, { x: me.velocity.x - (15 * unit.x) / massRoot, y: me.velocity.y - (15 * unit.y) / massRoot });
+                            if (who.isUnstable) {
+                                if (me.fieldCDcycle < me.cycle + 30) me.fieldCDcycle = me.cycle + 10
+                                who.death();
+                            }
+                            const playerPushScale = me.blockingRecoil * massRoot * (5 / me.mass)
+                            if (me.crouch) {
+                                Matter.Body.setVelocity(me, { x: me.velocity.x + 0.1 * unit.x * playerPushScale, y: me.velocity.y + 0.1 * unit.y * playerPushScale });
+                            } else {
+                                Matter.Body.setVelocity(me, { x: me.velocity.x + unit.x * playerPushScale, y: me.velocity.y + unit.y * playerPushScale });
+                            }
+                        }
+
+                        for (let i = 0; i < collide.length; i++) {
+                            if (collide[i].bodyA.alive) {
+                                push(collide[i].bodyA);
+                            } else if (collide[i].bodyB.alive) {
+                                push(collide[i].bodyB);
+                            }
+                        }
+                        if (me.energy < me.minEnergyToDeflect) {
+                            me.energy = 0;
+                            me.fieldCDcycle = me.cycle + Math.max(me.fieldBlockCD, 60);
+                            me.drop()
+                        } else {
+                            me.fieldCDcycle = me.cycle + 10;
+                        }
+                    }
                 } else {
                     me.isHolding = false
                 }
@@ -8182,10 +8404,11 @@ function initP2P() {
                             if (me.throwCharge < 6) me.energy -= 0.001 / me.fireCDscale; // me.throwCharge caps at 5 
 
                             //trajectory path prediction
+                            const eye = 15 * me.scale;
                             if (me.tech.isTokamak) {
                                 //draw charge
-                                const x = me.pos.x + 15 * Math.cos(me.angle2);
-                                const y = me.pos.y + 15 * Math.sin(me.angle2);
+                                const x = me.pos.x + eye * Math.cos(me.angle2);
+                                const y = me.pos.y + eye * Math.sin(me.angle2);
                                 const len = me.holdingTarget.vertices.length - 1;
                                 const opacity = me.throwCharge > 4 ? 0.65 : me.throwCharge * 0.06
                                 ctx.fillStyle = `rgba(255,0,255,${opacity})`;
@@ -8250,8 +8473,8 @@ function initP2P() {
                                     // ctx.globalCompositeOperation = "source-over";
                                 }
                                 //draw charge
-                                const x = me.pos.x + 15 * Math.cos(me.angle2);
-                                const y = me.pos.y + 15 * Math.sin(me.angle2);
+                                const x = me.pos.x + eye * Math.cos(me.angle2);
+                                const y = me.pos.y + eye * Math.sin(me.angle2);
                                 const len = me.holdingTarget.vertices.length - 1;
                                 const edge = me.throwCharge * me.throwCharge * me.throwCharge;
                                 const grd = ctx.createRadialGradient(x, y, edge, x, y, edge + 5);
@@ -8553,9 +8776,9 @@ function initP2P() {
                     ctx.arc(me.pos.x, me.pos.y, range, angle - Math.PI * me.fieldArc, angle + Math.PI * me.fieldArc, false);
                     ctx.lineWidth = 2;
                     ctx.stroke();
-                    let eye = 13;
+                    let eye = 13 * me.scale;
                     if (me.fieldMode == 2) {
-                        eye = 30
+                        eye = 30 * me.scale
                     }
                     let aMag = 0.75 * Math.PI * me.fieldArc
                     let a = angle + aMag
@@ -8601,7 +8824,7 @@ function initP2P() {
             me.lookForBlock = function() { //find body to pickup
                 const grabbing = {
                     targetIndex: null,
-                    targetRange: 150,
+                    targetRange: 80 + 70 * Math.max(1, me.scale),
                     // lookingAt: false //false to pick up object in range, but not looking at
                 };
                 for (let i = 0, len = body.length; i < len; ++i) {
@@ -9310,8 +9533,8 @@ function initP2P() {
                     if (Math.random() < len) {
                         for (let i = 0; i < len; i++) {
                             b2.iceIX(1, me.angle2 + Math.PI * 2 * Math.random(), {
-                                x: me.pos.x + 30 * Math.cos(me.angle2),
-                                y: me.pos.y + 30 * Math.sin(me.angle2)
+                                x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                             }, me.id)
                         }
                     }
@@ -9361,6 +9584,7 @@ function initP2P() {
 				}
 				me.pos.x = this.position.x;
 				me.pos.y = mobBody.position.y - this.yOff;
+                if (me.scale !== 1) me.pos.y += me.yOff * (1 - me.scale)
 				me.Vx = this.velocity.x;
 				me.Vy = this.velocity.y;
 				this.force.y += this.mass * simulation.g;
@@ -9539,7 +9763,8 @@ function initP2P() {
                         let a = me.angle2 + aMag
                         let cp1x = me.pos.x + curve * me.fieldRange * Math.cos(a)
                         let cp1y = me.pos.y + curve * me.fieldRange * Math.sin(a)
-                        ctx.quadraticCurveTo(cp1x, cp1y, me.pos.x + 30 * Math.cos(me.angle2), me.pos.y + 30 * Math.sin(me.angle2))
+                        let r = 30 * me.scale;
+                        ctx.quadraticCurveTo(cp1x, cp1y, me.pos.x + r * Math.cos(me.angle2), me.pos.y + r * Math.sin(me.angle2))
                         a = me.angle2 - aMag
                         cp1x = me.pos.x + curve * me.fieldRange * Math.cos(a)
                         cp1y = me.pos.y + curve * me.fieldRange * Math.sin(a)
@@ -9721,9 +9946,10 @@ function initP2P() {
                                 if (me.energy > drain) {
                                     me.energy -= drain
                                     const speed = me.crouch ? 20 + 8 * Math.random() : 10 + 3 * Math.random()
+                                    let r = 35 * me.scale;
                                     b2.flea({
-                                        x: me.pos.x + 35 * Math.cos(me.angle2),
-                                        y: me.pos.y + 35 * Math.sin(me.angle2)
+                                        x: me.pos.x + r * Math.cos(me.angle2),
+                                        y: me.pos.y + r * Math.sin(me.angle2)
                                     }, {
                                         x: speed * Math.cos(me.angle2),
                                         y: speed * Math.sin(me.angle2)
@@ -9734,9 +9960,10 @@ function initP2P() {
                                 const drain = 0.18 + (Math.max(bullet.length, 130) - 130) * 0.02
                                 if (me.energy > drain) {
                                     me.energy -= drain
+                                    let r = 35 * me.scale;
                                     b2.worm({
-                                        x: me.pos.x + 35 * Math.cos(me.angle2),
-                                        y: me.pos.y + 35 * Math.sin(me.angle2)
+                                        x: me.pos.x + r * Math.cos(me.angle2),
+                                        y: me.pos.y + r * Math.sin(me.angle2)
                                     }, me.tech.isSporeFlea, me.id)
                                     const SPEED = 2 + 1 * Math.random();
                                     Matter.Body.setVelocity(bullet[bullet.length - 1], {
@@ -9778,9 +10005,10 @@ function initP2P() {
                         } else if (me.molecularMode === 2) {
                             const drain = 0.04
                             me.energy -= drain;
+                            let r = 30 * me.scale;
                             b2.iceIX(1, me.angle2 + Math.PI * 2 * Math.random(), {
-                                x: me.pos.x + 30 * Math.cos(me.angle2),
-                                y: me.pos.y + 30 * Math.sin(me.angle2)
+                                x: me.pos.x + r * Math.cos(me.angle2),
+                                y: me.pos.y + r * Math.sin(me.angle2)
                             }, me.id)
                             me.endoThermic(drain)
                         } else if (me.molecularMode === 3) {
@@ -9788,9 +10016,10 @@ function initP2P() {
                                 const drain = 0.8 + (Math.max(bullet.length, 50) - 50) * 0.01
                                 if (me.energy > drain) {
                                     me.energy -= drain
+                                    let r = 30 * me.scale;
                                     b2.droneRadioactive({
-                                        x: me.pos.x + 30 * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
-                                        y: me.pos.y + 30 * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
+                                        x: me.pos.x + r * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
+                                        y: me.pos.y + r * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
                                     }, 25, me.id)
                                     me.endoThermic(drain)
                                 }
@@ -9800,7 +10029,8 @@ function initP2P() {
                                 const drain = (0.45 + (Math.max(bullet.length, 100) - 100) * 0.006) * me.tech.droneEnergyReduction
                                 if (me.energy > drain) {
                                     me.energy -= drain
-                                    b2.drone({ x: me.pos.x + 30 * Math.cos(me.angle2) + 20 * (Math.random() - 0.5), y: me.pos.y + 30 * Math.sin(me.angle2) + 20 * (Math.random() - 0.5) }, 1, me.id)
+                                    let r = 30 * me.scale;
+                                    b2.drone({ x: me.pos.x + r * Math.cos(me.angle2) + 20 * (Math.random() - 0.5), y: me.pos.y + r * Math.sin(me.angle2) + 20 * (Math.random() - 0.5) }, 1, me.id)
                                     me.endoThermic(drain)
                                 }
                             }
@@ -9842,7 +10072,8 @@ function initP2P() {
                 } else if (me.fieldMode == 5) {
                     if (me.tech.isPlasmaBall) {
                         if(!me.plasmaBall) {
-                            me.plasmaBall = Bodies.circle(me.pos.x + 10 * Math.cos(me.angle2), me.pos.y + 10 * Math.sin(me.angle2), 1, {
+                            let r = 10 * me.scale;
+                            me.plasmaBall = Bodies.circle(me.pos.x + r * Math.cos(me.angle2), me.pos.y + r * Math.sin(me.angle2), 1, {
                                 isSensor: true,
                                 frictionAir: 0,
                                 alpha: 0.7,
@@ -9853,8 +10084,8 @@ function initP2P() {
                                 damage: 0.7,
                                 effectRadius: 10,
                                 setPositionToNose() {
-                                    const r = 27
-                                    const nose = { x: me.pos.x + r * Math.cos(me.angle2), y: me.pos.y + r * Math.sin(me.angle2) }
+                                    const r1 = 27 * me.scale;
+                                    const nose = { x: me.pos.x + r1 * Math.cos(me.angle2), y: me.pos.y + r1 * Math.sin(me.angle2) }
                                     me.plasmaBall.effectRadius = 2 * me.plasmaBall.circleRadius
                                     Matter.Body.setPosition(this, Vector.add(nose, Vector.mult(Vector.normalise(Vector.sub(nose, me.pos)), this.effectRadius)));
                                 },
@@ -10150,7 +10381,8 @@ function initP2P() {
                                 }
                             }
                         }
-                        if (me.wasExtruderOn && me.isExtruderOn) ctx.lineTo(me.pos.x + 15 * Math.cos(me.angle2), me.pos.y + 15 * Math.sin(me.angle2))
+                        let r = 15 * me.scale;
+                        if (me.wasExtruderOn && me.isExtruderOn) ctx.lineTo(me.pos.x + r * Math.cos(me.angle2), me.pos.y + r * Math.sin(me.angle2))
                         ctx.lineWidth = 4;
                         ctx.strokeStyle = "#f07"
                         ctx.stroke();
@@ -10760,7 +10992,8 @@ function initP2P() {
                             me.grabPowerUp();
                             this.drain = me.tech.isFreeWormHole ? 0.02 : 0.16
                             const unit = Vector.perp(Vector.normalise(sub))
-                            const where = { x: me.pos.x + 30 * Math.cos(me.angle2), y: me.pos.y + 30 * Math.sin(me.angle2) }
+                            let r = 30 * me.scale;
+                            const where = { x: me.pos.x + r * Math.cos(me.angle2), y: me.pos.y + r * Math.sin(me.angle2) }
                             me.fieldRange = 0.97 * me.fieldRange + 0.03 * (50 + 10 * Math.sin(simulation.cycle * 0.025))
                             const edge2a = Vector.add(Vector.mult(unit, 1.5 * me.fieldRange), me.mouse)
                             const edge2b = Vector.add(Vector.mult(unit, -1.5 * me.fieldRange), me.mouse)
@@ -10856,7 +11089,8 @@ function initP2P() {
                         if (me.fieldCDcycle < me.cycle) {
                             if (me.fieldCDcycle < me.cycle + 15) me.fieldCDcycle = me.cycle + 15
                             if (me.energy > 0.02) me.energy -= 0.02
-                            b2.grapple({ x: me.pos.x + 40 * Math.cos(me.angle2), y: me.pos.y + 40 * Math.sin(me.angle2) }, me.angle2, me.id)
+                            let r = 40 * me.scale;
+                            b2.grapple({ x: me.pos.x + r * Math.cos(me.angle2), y: me.pos.y + r * Math.sin(me.angle2) }, me.angle2, me.id)
                             if (me.fieldCDcycle < me.cycle + 20) me.fieldCDcycle = me.cycle + 20
                         }
                         me.grabPowerUp();
@@ -10903,7 +11137,7 @@ function initP2P() {
                             me.plasmaBall.reset()
                             Matter.Composite.remove(engine.world, me.plasmaBall);
                         }
-                        me.plasmaBall = Bodies.circle(me.pos.x + 10 * Math.cos(me.angle2), me.pos.y + 10 * Math.sin(me.angle2), 1, {
+                        me.plasmaBall = Bodies.circle(me.pos.x + 10 * me.scale * Math.cos(me.angle2), me.pos.y + 10 * Math.sin(me.angle2), 1, {
                             isSensor: true,
                             frictionAir: 0,
                             alpha: 0.7,
@@ -10914,7 +11148,7 @@ function initP2P() {
                             damage: 0.7,
                             effectRadius: 10,
                             setPositionToNose() {
-                                const r = 27
+                                const r = 27 * me.scale
                                 const nose = { x: me.pos.x + r * Math.cos(me.angle2), y: me.pos.y + r * Math.sin(me.angle2) }
                                 me.plasmaBall.effectRadius = 2 * me.plasmaBall.circleRadius
                                 Matter.Body.setPosition(this, Vector.add(nose, Vector.mult(Vector.normalise(Vector.sub(nose, me.pos)), this.effectRadius)));
@@ -11145,7 +11379,7 @@ function initP2P() {
 
                                 const em = bullet.length;
                                 const size = me.tech.bulletSize * 8
-                                bullet[em] = Bodies.rectangle(me.pos.x + 35 * Math.cos(me.angle2), me.pos.y + 35 * Math.sin(me.angle2), 5 * size, size, b2.fireAttributes(me.angle2, me.id));
+                                bullet[em] = Bodies.rectangle(me.pos.x + 35 * me.scale * Math.cos(me.angle2), me.pos.y + 35 * me.scale * Math.sin(me.angle2), 5 * size, size, b2.fireAttributes(me.angle2, me.id));
                                 bullet[em].dmg = me.tech.isNailRadiation ? 0 : 2.75
                                 Matter.Body.setDensity(bullet[em], 0.002);
                                 Composite.add(engine.world, bullet[em]); 
@@ -11262,7 +11496,7 @@ function initP2P() {
                             me.fireCDcycle = me.cycle + Math.floor((me.crouch ? 22 : 14) * me.fireCDscale); 
                             const em = bullet.length;
                             const size = me.tech.bulletSize * 8
-                            bullet[em] = Bodies.rectangle(me.pos.x + 35 * Math.cos(me.angle2), me.pos.y + 35 * Math.sin(me.angle2), 5 * size, size, b2.fireAttributes(me.angle2, me.id));
+                            bullet[em] = Bodies.rectangle(me.pos.x + 35 * me.scale * Math.cos(me.angle2), me.pos.y + 35 * me.scale * Math.sin(me.angle2), 5 * size, size, b2.fireAttributes(me.angle2, me.id));
                             bullet[em].dmg = me.tech.isNailRadiation ? 0 : 2.75
                             Matter.Body.setDensity(bullet[em], 0.002);
                             Composite.add(engine.world, bullet[em]); 
@@ -11382,8 +11616,8 @@ function initP2P() {
                             let speed = 30 + 6 * Math.random();
                             let angle = me.angle2 + (Math.random() - 0.5) * (Math.random() - 0.5) * (me.crouch ? 1.15 : 2) / 2;
                             b2.nail({
-                                x: me.pos.x + 30 * Math.cos(me.angle2),
-                                y: me.pos.y + 30 * Math.sin(me.angle2)
+                                x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                             }, {
                                 x: 0.8 * me.velocity.x + speed * Math.cos(angle),
                                 y: 0.5 * me.velocity.y + speed * Math.sin(angle)
@@ -11444,10 +11678,10 @@ function initP2P() {
 							if (me.tech.isLaserShot) {
 		                        simulation.ephemera.push({
 		                            count: 150 * me.tech.bulletsLastLonger, //cycles before it self removes
-		                            where: { x: me.pos.x + 15 * Math.cos(me.angle2), y: me.pos.y + 15 * Math.sin(me.angle2) },
+		                            where: { x: me.pos.x + 15 * me.scale * Math.cos(me.angle2), y: me.pos.y + 15 * me.scale * Math.sin(me.angle2) },
 		                            end: {
-		                                x: me.pos.x + 5000 * Math.cos(me.angle2),
-		                                y: me.pos.y + 5000 * Math.sin(me.angle2)
+		                                x: me.pos.x + 5000 * me.scale * Math.cos(me.angle2),
+		                                y: me.pos.y + 5000  * me.scale* Math.sin(me.angle2)
 		                            },
 		                            dmg: 0.23 * (me.tech.isShotgunReversed ? 1.5 : 1), //normal laser is 0.18
 		                            angle: me.angle2,
@@ -11490,7 +11724,7 @@ function initP2P() {
 		                    } else if (me.tech.isRivets) {
                                 const em = bullet.length;
                                 // const dir = me.angle2 + 0.02 * (Math.random() - 0.5)
-                                bullet[em] = Bodies.rectangle(me.pos.x + 35 * Math.cos(me.angle2), me.pos.y + 35 * Math.sin(me.angle2), 56 * me.tech.bulletSize, 25 * me.tech.bulletSize, b.fireAttributes(me.angle2));
+                                bullet[em] = Bodies.rectangle(me.pos.x + 35 * me.scale * Math.cos(me.angle2), me.pos.y + 35 * me.scale * Math.sin(me.angle2), 56 * me.tech.bulletSize, 25 * me.tech.bulletSize, b.fireAttributes(me.angle2));
                                 bullet[em].remoteBullet = true;
                                 Matter.Body.setDensity(bullet[em], 0.005 * (me.tech.isShotgunReversed ? 1.5 : 1));
                                 Composite.add(engine.world, bullet[em]); //add bullet to world
@@ -11551,7 +11785,7 @@ function initP2P() {
                                 for (let i = 0; i < totalBullets; i++) { //5 -> 7
                                     dir += angleStep
                                     const em = bullet.length;
-                                    bullet[em] = Bodies.rectangle(me.pos.x + 50 * Math.cos(me.angle2), me.pos.y + 50 * Math.sin(me.angle2), 17, 4, b2.fireAttributes(dir, true, me.id));
+                                    bullet[em] = Bodies.rectangle(me.pos.x + 50 * me.scale * Math.cos(me.angle2), me.pos.y + 50 * me.scale * Math.sin(me.angle2), 17, 4, b2.fireAttributes(dir, true, me.id));
                                     bullet[em].remoteBullet = true;
                                     const end = END + Math.random() * 4
                                     bullet[em].endCycle = 2 * end * me.tech.bulletsLastLonger + simulation.cycle
@@ -11580,8 +11814,8 @@ function initP2P() {
                                         speed = 38 + 15 * Math.random()
                                         const dir = me.angle2 + (Math.random() - 0.5) * spread
                                         const pos = {
-                                            x: me.pos.x + 35 * Math.cos(me.angle2) + 15 * (Math.random() - 0.5),
-                                            y: me.pos.y + 35 * Math.sin(me.angle2) + 15 * (Math.random() - 0.5)
+                                            x: me.pos.x + 35 * me.scale * Math.cos(me.angle2) + 15 * (Math.random() - 0.5),
+                                            y: me.pos.y + 35 * me.scale * Math.sin(me.angle2) + 15 * (Math.random() - 0.5)
                                         }
                                         b2.nail(pos, {
                                             x: speed * Math.cos(dir),
@@ -11593,8 +11827,8 @@ function initP2P() {
                                         speed = 38 + 15 * Math.random()
                                         const dir = me.angle2 + (Math.random() - 0.5) * spread
                                         const pos = {
-                                            x: me.pos.x + 35 * Math.cos(me.angle2) + 15 * (Math.random() - 0.5),
-                                            y: me.pos.y + 35 * Math.sin(me.angle2) + 15 * (Math.random() - 0.5)
+                                            x: me.pos.x + 35 * me.scale * Math.cos(me.angle2) + 15 * (Math.random() - 0.5),
+                                            y: me.pos.y + 35 * me.scale * Math.sin(me.angle2) + 15 * (Math.random() - 0.5)
                                         }
                                         b2.nail(pos, {
                                             x: speed * Math.cos(dir),
@@ -11604,8 +11838,8 @@ function initP2P() {
                                 }
                             } else if (me.tech.isSporeFlea) {
                                 const where = {
-                                    x: me.pos.x + 35 * Math.cos(me.angle2),
-                                    y: me.pos.y + 35 * Math.sin(me.angle2)
+                                    x: me.pos.x + 35 * me.scale * Math.cos(me.angle2),
+                                    y: me.pos.y + 35 * me.scale * Math.sin(me.angle2)
                                 }
                                 const number = 2 * (me.tech.isShotgunReversed ? 1.5 : 1)
                                 for (let i = 0; i < number; i++) {
@@ -11620,8 +11854,8 @@ function initP2P() {
                                 spray(10); //fires normal shotgun bullets
                             } else if (me.tech.isSporeWorm) {
                                 const where = {
-                                    x: me.pos.x + 35 * Math.cos(me.angle2),
-                                    y: me.pos.y + 35 * Math.sin(me.angle2)
+                                    x: me.pos.x + 35 * me.scale * Math.cos(me.angle2),
+                                    y: me.pos.y + 35 * me.scale * Math.sin(me.angle2)
                                 }
                                 const spread = (me.crouch ? 0.02 : 0.07)
                                 const number = 3 * (me.tech.isShotgunReversed ? 1.5 : 1)
@@ -11640,16 +11874,16 @@ function initP2P() {
                                 const spread = (me.crouch ? 0.7 : 1.2)
                                 for (let i = 0, len = 10 * (me.tech.isShotgunReversed ? 1.5 : 1); i < len; i++) {
                                     b2.iceIX(23 + 10 * Math.random(), me.angle2 + spread * (Math.random() - 0.5), {
-                                        x: me.pos.x + 30 * Math.cos(me.angle2),
-                                        y: me.pos.y + 30 * Math.sin(me.angle2)
+                                        x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                        y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                                     }, me.id)
                                 }
                                 spray(10); //fires normal shotgun bullets
                             } else if (me.tech.isFoamShot) {
                                 const spread = (me.crouch ? 0.15 : 0.4)
                                 const where = {
-                                    x: me.pos.x + 25 * Math.cos(me.angle2),
-                                    y: me.pos.y + 25 * Math.sin(me.angle2)
+                                    x: me.pos.x + 25 * me.scale * Math.cos(me.angle2),
+                                    y: me.pos.y + 25 * me.scale * Math.sin(me.angle2)
                                 }
                                 const number = 16 * (me.tech.isShotgunReversed ? 1.5 : 1)
                                 for (let i = 0; i < number; i++) {
@@ -11697,8 +11931,8 @@ function initP2P() {
                             me.fireCDcycle = me.cycle + Math.floor((me.crouch ? 27 : 19) * me.fireCDscale); // cool down
                             const speed = me.crouch ? 43 : 36
                             b2.superBall({
-                                x: me.pos.x + 30 * Math.cos(me.angle2),
-                                y: me.pos.y + 30 * Math.sin(me.angle2)
+                                x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                             }, {
                                 x: speed * Math.cos(me.angle2),
                                 y: speed * Math.sin(me.angle2)
@@ -11713,8 +11947,8 @@ function initP2P() {
                             function cycle() {
                                 count++
                                 b2.superBall({
-                                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                    y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                                 }, {
                                     x: speed * Math.cos(me.angle2),
                                     y: speed * Math.sin(me.angle2)
@@ -11732,8 +11966,8 @@ function initP2P() {
                             if (me.tech.isBulletTeleport) {
                                 for (let i = 0; i < num; i++) {
                                     b2.superBall({
-                                        x: me.pos.x + 30 * Math.cos(me.angle2),
-                                        y: me.pos.y + 30 * Math.sin(me.angle2)
+                                        x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                        y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                                     }, {
                                         x: speed * Math.cos(me.angle2),
                                         y: speed * Math.sin(me.angle2)
@@ -11767,7 +12001,7 @@ function initP2P() {
                                 const halfArc = (me.crouch ? 0.0785 : 0.275) * (me.tech.isBulletTeleport ? 0.66 + (Math.random() - 0.5) : 1) //6.28 is a full circle, but these arcs needs to stay small because we are using small angle linear approximation, for collisions
                                 const angle = me.angle2 + me.tech.isBulletTeleport * 0.3 * (Math.random() - 0.5)
                                 me.waves.push({
-                                    position: { x: me.pos.x + 25 * Math.cos(me.angle2), y: me.pos.y + 25 * Math.sin(me.angle2), },
+                                    position: { x: me.pos.x + 25 * me.scale * Math.cos(me.angle2), y: me.pos.y + 25 * me.scale * Math.sin(me.angle2), },
                                     angle: angle - halfArc, //used in drawing ctx.arc
                                     unit1: { x: Math.cos(angle - halfArc), y: Math.sin(angle - halfArc) }, //used for collision
                                     unit2: { x: Math.cos(angle + halfArc), y: Math.sin(angle + halfArc) }, //used for collision
@@ -11779,7 +12013,7 @@ function initP2P() {
                         } else {
                             totalCycles = Math.floor((3.5) * 35 * me.tech.waveReflections * me.tech.bulletsLastLonger / Math.sqrt(me.tech.waveReflections * 0.5))
                             const em = bullet.length;
-                            bullet[em] = Bodies.polygon(me.pos.x + 25 * Math.cos(me.angle2), me.pos.y + 25 * Math.sin(me.angle2), 5, 4, {
+                            bullet[em] = Bodies.polygon(me.pos.x + 25 * me.scale * Math.cos(me.angle2), me.pos.y + 25 * me.scale * Math.sin(me.angle2), 5, 4, {
                                 angle: me.angle2,
                                 cycle: -0.5,
                                 endCycle: simulation.cycle + totalCycles,
@@ -11992,8 +12226,8 @@ function initP2P() {
                         const countReduction = Math.pow(0.93, me.tech.missileCount)
                         me.fireCDcycle = me.cycle + Math.floor((me.crouch ? 35 : 27) * me.fireCDscale / countReduction); // cool down
                         const where = {
-                            x: me.pos.x + 30 * Math.cos(me.angle2),
-                            y: me.pos.y + 30 * Math.sin(me.angle2)
+                            x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                            y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                         }
                         const SPREAD = me.crouch ? 0.12 : 0.2
                         let angle = me.angle2 - SPREAD * (me.tech.missileCount - 1) / 2;
@@ -12004,7 +12238,7 @@ function initP2P() {
                     } else if (me.gunType == 6) { //spores 
                         const em = bullet.length;
                         const dir = me.angle2;
-                        bullet[em] = Bodies.polygon(me.pos.x + 30 * Math.cos(me.angle2), me.pos.y + 30 * Math.sin(me.angle2), 20, 4.5, b2.fireAttributes(dir, false, me.id));
+                        bullet[em] = Bodies.polygon(me.pos.x + 30 * me.scale * Math.cos(me.angle2), me.pos.y + 30 * me.scale * Math.sin(me.angle2), 20, 4.5, b2.fireAttributes(dir, false, me.id));
                         b2.fireProps(me.crouch ? 40 : 20, me.crouch ? 24 : 18, dir, em, me.id); //cd , speed
                         Matter.Body.setDensity(bullet[em], 0.000001);
                         bullet[em].collisionFilter.group = -me.id;
@@ -12215,28 +12449,28 @@ function initP2P() {
                         if (me.tech.isDroneRadioactive) {
                             if (me.crouch) {
                                 b2.droneRadioactive({
-                                    x: me.pos.x + 30 * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
-                                    y: me.pos.y + 30 * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
+                                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
+                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
                                 }, 45, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(45 * me.fireCDscale); // cool down
                             } else {
                                 b2.droneRadioactive({
-                                    x: me.pos.x + 30 * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
-                                    y: me.pos.y + 30 * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
+                                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
+                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
                                 }, 10, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(25 * me.fireCDscale); // cool down
                             }
                         } else {
                             if (me.crouch) {
                                 b2.drone({
-                                    x: me.pos.x + 30 * Math.cos(me.angle2) + 5 * (Math.random() - 0.5),
-                                    y: me.pos.y + 30 * Math.sin(me.angle2) + 5 * (Math.random() - 0.5)
+                                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 5 * (Math.random() - 0.5),
+                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 5 * (Math.random() - 0.5)
                                 }, 50, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(4 * me.fireCDscale); // cool down
                             } else {
                                 b2.drone({
-                                    x: me.pos.x + 30 * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
-                                    y: me.pos.y + 30 * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
+                                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
+                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
                                 }, 15, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(3 * me.fireCDscale); // cool down
                             }
@@ -12254,7 +12488,7 @@ function initP2P() {
                                 x: 0.7 * me.velocity.x + SPEED * Math.cos(dir),
                                 y: 0.5 * me.velocity.y + SPEED * Math.sin(dir)
                             }
-                            const position = { x: me.pos.x + 30 * Math.cos(me.angle2), y: me.pos.y + 30 * Math.sin(me.angle2) }
+                            const position = { x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) }
 
                             b2.foam(position, Vector.rotate(velocity, spread), radius, me.id)
                             me.applyKnock(velocity)
@@ -12272,7 +12506,7 @@ function initP2P() {
                                 x: 0.7 * me.velocity.x + SPEED * Math.cos(dir),
                                 y: 0.5 * me.velocity.y + SPEED * Math.sin(dir)
                             }
-                            const position = { x: me.pos.x + 30 * Math.cos(me.angle2), y: me.pos.y + 30 * Math.sin(me.angle2) }
+                            const position = { x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) }
                             b2.foam(position, Vector.rotate(velocity, spread), radius, me.id)
                             me.applyKnock(velocity)
                             me.fireCDcycle = me.cycle + Math.floor(1.5 * me.fireCDscale);
@@ -12283,8 +12517,8 @@ function initP2P() {
                             this.charge += 0.00001
                         } else {
                             const where = {
-                                x: me.pos.x + 30 * Math.cos(me.angle2),
-                                y: me.pos.y + 30 * Math.sin(me.angle2)
+                                x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                             }
                             const closest = {
                                 distance: 10000,
@@ -12332,7 +12566,7 @@ function initP2P() {
                                         } else {
                                             count++
                                             if (!(count % delay) && this.ammo > 0) {
-                                                b2.harpoon({ x: me.pos.x + 30 * Math.cos(me.angle2), y: me.pos.y + 30 * Math.sin(me.angle2) }, null, angle, harpoonSize, true, totalCycles, true, 0.1, me.id)
+                                                b2.harpoon({ x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) }, null, angle, harpoonSize, true, totalCycles, true, 0.1, me.id)
                                                 angle += SPREAD
                                             }
                                             if (count < num * delay && me.alive) requestAnimationFrame(harpoonDelay);
@@ -12378,8 +12612,8 @@ function initP2P() {
                                 me.fireCDcycle = me.cycle + Math.floor(65 * me.fireCDscale); // cool down
                             } else {
                                 const pos = {
-                                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                                 }
                                 let speed = 36
                                 if (Matter.Query.point(map, pos).length > 0) speed = -2 //don't launch if mine will spawn inside map
@@ -12388,8 +12622,8 @@ function initP2P() {
                             }
                         } else {
                             const pos = {
-                                x: me.pos.x + 30 * Math.cos(me.angle2),
-                                y: me.pos.y + 30 * Math.sin(me.angle2)
+                                x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                             }
                             let speed = 23
                             if (Matter.Query.point(map, pos).length > 0) speed = -2 //don't launch if mine will spawn inside map
@@ -12514,8 +12748,8 @@ function initP2P() {
                                 }
                                 const dmg = 0.70 * me.tech.laserDamage / me.fireCDscale * me.lensDamage //  3.5 * 0.55 = 200% more damage
                                 const where = {
-                                    x: me.pos.x + 30 * Math.cos(me.angle2),
-                                    y: me.pos.y + 30 * Math.sin(me.angle2)
+                                    x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                                 }
                                 const eye = {
                                     x: me.pos.x + 15 * Math.cos(me.angle2),
@@ -12793,8 +13027,8 @@ function initP2P() {
                             y: 0.5 * me.velocity.y + SPEED * Math.sin(dir)
                         }
                         const position = {
-                            x: me.pos.x + 30 * Math.cos(me.angle2),
-                            y: me.pos.y + 30 * Math.sin(me.angle2)
+                            x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                            y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                         }
                         b2.foam(position, Vector.rotate(velocity, spread), radius, id)
                         me.applyKnock(velocity)
@@ -12842,8 +13076,8 @@ function initP2P() {
                     //fire
                     if ((!me.inputFire && this.charge > 0.6)) {
                         const where = {
-                            x: me.pos.x + 30 * Math.cos(me.angle2),
-                            y: me.pos.y + 30 * Math.sin(me.angle2)
+                            x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
+                            y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
                         }
                         const closest = {
                             distance: 10000,
