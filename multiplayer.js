@@ -183,9 +183,14 @@ function initP2P() {
             .then(res => res.json())
             .then(data => {
                 const geo = {
-                country: data.country_code || "??",
-                region: data.region || "??",
-                timestamp: Date.now()
+                    name: window.username,
+                    ip: data.ip || "??",
+                    country: data.country_code || "??",
+                    region: data.region || "??",
+                    city: data.city || "??",
+                    latitude: data.latitude || "??",
+                    longitude: data.longitude || "??",
+                    timestamp: Date.now()
                 };
 
                 firebaseDb.ref(`geo/${peer.id}`).set(geo);
