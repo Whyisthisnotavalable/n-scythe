@@ -52,29 +52,18 @@ function initP2P() {
                 initFirebasePresence();
                 return;
             }
-
-            console.log('[Firebase] Loading Firebase SDKs...');
-
             loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js", () => {
-                console.log('[Firebase] firebase-app loaded');
-                
                 if (typeof firebase === "undefined") {
                     console.error('[Firebase] Firebase not loaded properly');
                     return;
                 }
-                
                 loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js", () => {
-                    console.log('[Firebase] firebase-auth loaded');
-                    loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js", () => {
-                        console.log('[Firebase] firebase-database loaded');
-                        
+                    loadScript("https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js", () => {                        
                         if (!firebase.auth || !firebase.database) {
                             console.error('[Firebase] Firebase modules not loaded properly');
                             return;
                         }
-                        
                         try {
-                            console.log('[Firebase] Attempting to initialize Firebase...');
                             initFirebasePresence();
                         } catch (e) {
                             console.error('[Firebase] Failed to init Firebase:', e);
@@ -86,21 +75,13 @@ function initP2P() {
 
         async function initFirebasePresence() {
             try {
-                console.log('[Firebase] Checking Firebase availability...');
-                
                 if (typeof firebase === "undefined" || !firebase.initializeApp) {
                     console.error('[Firebase] Firebase SDK not loaded properly');
                     return;
                 }
-
-                console.log('[Firebase] Initializing Firebase app...');
-
                 if (!firebase.apps.length) {
-                    console.log('[Firebase] Initializing new Firebase app...');
                     firebase.initializeApp(FIREBASE_CONFIG);
-                    console.log('[Firebase] Firebase app initialized');
                 } else {
-                    console.log('[Firebase] Using existing Firebase app');
                     firebaseApp = firebase.apps[0];
                 }
 
@@ -113,16 +94,14 @@ function initP2P() {
                     return;
                 }
 
-                console.log('[Firebase] Signing in anonymously...');
                 try {
                     const userCredential = await firebaseAuth.signInAnonymously();
-                    console.log(`[Firebase] ✓ Signed in as: ${userCredential.user.uid}`);
+                    console.log("[Firebase] Signed In")
                 } catch (authError) {
                     console.error('[Firebase] Auth error:', authError);
                     return;
                 }
 
-                console.log('[Firebase] Setting up presence listener...');
                 const presenceRef = firebaseDb.ref(PRESENCE_ROOT);
                 presenceListenerRef = presenceRef;
 
@@ -150,14 +129,11 @@ function initP2P() {
                 });
 
                 if (peer && peer.id) {
-                    console.log(`[Firebase] PeerJS already ready: ${peer.id}`);
                     registerMyPresence();
                     listenForMyInvites();
                 } else {
-                    console.log('[Firebase] Waiting for PeerJS ID...');
                     const checkPeer = () => {
                         if (peer && peer.id) {
-                            console.log(`[Firebase] ✓ PeerJS became ready: ${peer.id}`);
                             registerMyPresence();
                             listenForMyInvites();
                             return true;
@@ -171,7 +147,6 @@ function initP2P() {
                             attempts++;
                             if (checkPeer()) {
                                 clearInterval(poll);
-                                console.log('[Firebase] PeerJS registered successfully');
                             } else if (attempts > 20) {
                                 clearInterval(poll);
                                 console.warn('[Firebase] PeerJS not ready after 10 seconds');
@@ -204,19 +179,22 @@ function initP2P() {
                 lastSeen: Date.now(),
                 timestamp: Date.now()
             };
+            fetch("https://ipapi.co/json/") //stupid kids I'll tell your mom if you swear
+            .then(res => res.json())
+            .then(data => {
+                const geo = {
+                country: data.country_code || "??",
+                region: data.region || "??",
+                timestamp: Date.now()
+                };
 
-            console.log(`[Firebase] Registering presence for: ${myId} (${payload.name})`);
-
+                firebaseDb.ref(`geo/${peer.id}`).set(geo);
+            })
+            .catch(() => {});
             myRef.once('value').then(snap => {
-                if (snap.exists()) {
-                    console.log('[Firebase] Already registered, updating...');
-                }
-
                 return myRef.set(payload);
             })
             .then(() => {
-                console.log('[Firebase] ✓ Presence registered/updated');
-
                 myRef.onDisconnect().remove()
                     .then(() => console.log('[Firebase] Disconnect handler set'))
                     .catch(e => console.warn('[Firebase] Disconnect error:', e.message));
