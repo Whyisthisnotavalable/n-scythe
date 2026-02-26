@@ -18,6 +18,9 @@ javascript:(function() {
 		released: false,
 		stabStatus: false,
 		haveEphemera: false,
+		isBroken: false,
+		brokenParts: [],
+		isReforming: false,
 		fire() { },
 		do() {
 			if(!this.haveEphemera) {
@@ -53,6 +56,7 @@ javascript:(function() {
 						if(b.guns[b.activeGun].name == 'sword' && tech.greatSword && b.guns[b.activeGun].sword) {
 							let bladeSegments = b.guns[b.activeGun].bladeSegments;
 							for(let i = 0; i < bladeSegments.length; i++) {
+								if(!bladeSegments[i].render) continue;
 								ctx.beginPath();
 								ctx.lineJoin = "miter";
 								ctx.miterLimit = 100;
@@ -88,6 +92,7 @@ javascript:(function() {
 			} else {
 				this.renderDefault();
 			}
+			this.blades();
 			this.collision();
 		},
 		chooseFireMethod() {
@@ -144,7 +149,7 @@ javascript:(function() {
 				this.charge = 0;
 				this.released = false;
 			} else {
-				if (this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
+				if (!this.isBroken && this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 					if(tech.infinityEdge) {
 						const newSize = Math.sqrt(0.5 * m.health) + 1;
 						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), this.sword.position);
@@ -260,6 +265,20 @@ javascript:(function() {
 			if(this.constraint) {
 				this.constraint.pointA = player.position;
 			}
+			if (this.isBroken) {
+				for (let p of this.brokenParts) {
+					for (let i = 0; i < mob.length; i++) {
+						if (Matter.Query.collides(p, [mob[i]]).length > 0) {
+							mob[i].damage(1);
+							break;
+						}
+					}
+				}
+				if(!m.crouch && this.isBroken) {
+					this.reformSword();
+				}
+				return;
+			}
 			if(tech.isStabSword && !m.crouch && this.cycle > 0 && this.stabStatus) {
 				if(this.sword) {
 					this.stabStatus = false;
@@ -277,6 +296,9 @@ javascript:(function() {
 							bullet.splice(index, 1);
 						}
 					});
+					this.brokenParts.forEach(part => {
+						Composite.remove(engine.world, part);
+					});
 					this.sword = undefined;
 					if(this.constraint) {
 						Composite.remove(engine.world, this.constraint);
@@ -286,7 +308,6 @@ javascript:(function() {
 					m.fireCDcycle = 0;
 				}
 			}
-			
 			if(input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
 				if(tech.isEnergyHealth) {
 					m.energy -= 0.004;
@@ -320,6 +341,9 @@ javascript:(function() {
 						bullet.splice(index, 1);
 					}
 				});
+				this.brokenParts.forEach(part => {
+					Composite.remove(engine.world, part);
+				});
 				this.sword = undefined;
 				if(this.constraint) {
 					Composite.remove(engine.world, this.constraint);
@@ -335,10 +359,12 @@ javascript:(function() {
 						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), this.sword.position);
 						this.sword.scale = newSize;
 					}
-					if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
-						Matter.Body.setAngularVelocity(this.sword, -Math.PI * 0.1 * (tech.greatSword ? 0.75 : 1) * (tech.longSword ? 0.6 : 1));
-					} else {
-						Matter.Body.setAngularVelocity(this.sword, Math.PI * 0.1 * (tech.greatSword ? 0.75 : 1) * (tech.longSword ? 0.6 : 1));
+					if(!this.isReforming) {
+						if (!(this.angle > -Math.PI / 2 && this.angle < Math.PI / 2)) {
+							Matter.Body.setAngularVelocity(this.sword, -Math.PI * 0.1 * (tech.greatSword ? 0.75 : 1) * (tech.longSword ? 0.6 : 1));
+						} else {
+							Matter.Body.setAngularVelocity(this.sword, Math.PI * 0.1 * (tech.greatSword ? 0.75 : 1) * (tech.longSword ? 0.6 : 1));
+						}
 					}
 					if(tech.sizeIllusion) {
 						player.force.x += Math.cos(m.angle) * player.mass / 500;
@@ -366,6 +392,11 @@ javascript:(function() {
 						});
 						Composite.add(engine.world, this.constraint);
 					}
+					if(m.crouch && !this.isBroken && tech.heavenlyArray) {
+						this.breakSword();
+					} else if(!m.crouch && this.isBroken) {
+						this.reformSword();
+					}
 				} else if(this.sword) {
 					if(tech.isEnergyHealth) {
 						m.energy = 0.01;
@@ -382,6 +413,9 @@ javascript:(function() {
 						if (index !== -1) {
 							bullet.splice(index, 1);
 						}
+					});
+					this.brokenParts.forEach(part => {
+						Composite.remove(engine.world, part);
 					});
 					this.sword = undefined;
 					if(this.constraint) {
@@ -463,9 +497,9 @@ javascript:(function() {
 			const handleWidth = 20;
 			const handleHeight = 120;
 			const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
-			bullet[bullet.length] = handle;
-			handle.customName = "handle";
-			bullet[bullet.length - 1].do = () => {};
+			// bullet[bullet.length] = handle;
+			// handle.customName = "handle";
+			// bullet[bullet.length - 1].do = () => {};
 			const pommelWidth = 30;
 			const pommelHeight = 40;
 			const pommelVertices = [
@@ -491,8 +525,8 @@ javascript:(function() {
 				{ x: x, y: y },
 			];
 			const leftOuter = Bodies.fromVertices(x + 15, y - handleHeight, leftOuterVertices, spawn.propsIsNotHoldable);
-			bullet[bullet.length] = leftOuter;
-			bullet[bullet.length - 1].do = () => {};
+			// bullet[bullet.length] = leftOuter;
+			// bullet[bullet.length - 1].do = () => {};
 			const rightOuterVertices = [
 				{ x: x, y: y - 95 },
 				{ x: x - 15, y: y - 120 },
@@ -580,7 +614,7 @@ javascript:(function() {
 			sword.collisionFilter.category = cat.bullet;
 			sword.collisionFilter.mask = cat.mobBullet | cat.powerup | cat.mob | cat.body | cat.bullet;
 			Body.scale(sword, -1, 1, { x, y });
-			return { sword, bladeSegments: [rightOuter, rightHigher, decor1, decor4, leftOuter, decor2, decor3, leftHigher, decor5, decor6, pommel, cross, cross2] };
+			return { sword, bladeSegments: [handle, rightOuter, rightHigher, decor1, decor4, leftOuter, decor2, decor3, leftHigher, decor5, decor6, pommel, cross, cross2] };
         },
 		longSword(position = player.position) {
 			let x = position.x;
@@ -737,6 +771,7 @@ javascript:(function() {
 				}
 				if(!tech.greatSword) {
 					for(let i = 0; i < this.bladeSegments.length; i++) {
+						if(!this.bladeSegments[i].render) continue;
 						ctx.beginPath();
 						ctx.lineJoin = "miter";
 						ctx.miterLimit = 100;
@@ -796,6 +831,7 @@ javascript:(function() {
 					ctx.restore();
 				}
 				for(let i = 0; i < this.bladeSegments.length; i++) {
+					if(!this.bladeSegments[i].render) continue;
 					ctx.save();
 					ctx.beginPath();
 					ctx.lineJoin = "miter";
@@ -921,6 +957,243 @@ javascript:(function() {
 				color.bullet = "black"
 			}
 		},
+		breakSword() {
+			if (!this.sword || this.isBroken || this.isReforming) return;
+			this.isBroken = true;
+			Composite.remove(engine.world, this.sword);
+			this.brokenParts.forEach(part => {
+				Composite.remove(engine.world, part);
+			});
+			this.brokenParts = [];
+			for (let i = 0; i < this.bladeSegments.length; i++) {
+				const part = this.bladeSegments[i];
+				const newPart = Bodies.fromVertices(
+					part.position.x,
+					part.position.y,
+					part.vertices,
+					spawn.propsIsNotHoldable
+				);
+				newPart.frictionAir = 0.08;
+				newPart.gravityScale = 0;
+				newPart.collisionFilter.category = cat.bullet;
+				newPart.collisionFilter.mask = cat.mobBullet | cat.powerup | cat.mob;
+				Composite.add(engine.world, newPart);
+				this.brokenParts.push(newPart);
+			}
+			this.sword = null;
+		},
+		getRandomOrbitPoint(px, py, minR, maxR) {
+			const angle = Math.random() * Math.PI * 2;
+			const radius = minR + Math.random() * (maxR - minR);
+
+			return {
+				x: px + Math.cos(angle) * radius,
+				y: py + Math.sin(angle) * radius
+			};
+		},
+		reformSword() {
+			if (!this.isBroken) return;
+			if (!this.sword && input.fire) {
+				if(this.constraint) {
+					Composite.remove(engine.world, this.constraint);
+					this.constraint = undefined;
+				}
+				if (tech.greatSword) {
+					({ sword: this.sword, bladeSegments: this.bladeSegments } = this.greatSword());
+				} else if (tech.longSword) {
+					({ sword: this.sword, bladeSegments: this.bladeSegments } = this.longSword());
+				} else {
+					({ sword: this.sword, bladeSegments: this.bladeSegments } = this.createAndSwingSword());
+				}
+				if(!this.constraint && (m.angle > -Math.PI / 2 && m.angle < Math.PI / 2)) {
+					this.constraint = Constraint.create({
+						pointA: player.position,
+						bodyB: this.sword,
+						pointB: {x: tech.longSword ? -75 : (tech.greatSword ? -50 : -9), y: (tech.longSword ? 275 : 200)},
+						stiffness: (tech.infinityEdge ? 0.05 : 0.1),
+						damping: 0.001815,
+						length: 0,
+						
+					});
+					Composite.add(engine.world, this.constraint);
+				} else if(!this.constraint) {
+					this.constraint = Constraint.create({
+						pointA: player.position,
+						bodyB: this.sword,
+						pointB: {x: tech.longSword ? 75 : (tech.greatSword ? 50 : 9), y: (tech.longSword ? 275 : 200)},
+						stiffness: (tech.infinityEdge ? 0.05 : 0.1),
+						damping: 0.001815,
+						length: 0,
+					});
+					Composite.add(engine.world, this.constraint);
+				}
+			} else {
+				if(this.constraint) {
+					Composite.remove(engine.world, this.constraint);
+					this.constraint = undefined;
+				}
+				this.bladeSegments = [];
+				this.bladeTrails = [];
+				this.brokenParts.forEach(part => {
+					Composite.remove(engine.world, part);
+				});
+			}
+			for(let i = 0; i < this.bladeSegments.length; i++) {
+				this.bladeSegments[i].render = false;
+			}
+			this.isReforming = true;
+			this.isBroken = false;
+		},
+		blades() {
+			if (this.isReforming && this.sword) {
+				for (let i = 0; i < this.brokenParts.length; i++) {
+					ctx.beginPath();
+					ctx.lineJoin = "miter";
+					ctx.miterLimit = 100;
+					ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : "crimson";
+					ctx.lineWidth = 5;
+					ctx.fillStyle = "black";
+					ctx.moveTo(this.brokenParts[i].vertices[0].x, this.brokenParts[i].vertices[0].y);
+					for(let j = 0; j < this.brokenParts[i].vertices.length; j++) {
+						ctx.lineTo(this.brokenParts[i].vertices[j].x, this.brokenParts[i].vertices[j].y)
+					};
+					ctx.closePath();
+					ctx.stroke();
+					ctx.fill();
+					ctx.lineJoin = "round";
+					ctx.miterLimit = 10;
+					const shard = this.brokenParts[i];
+					const targetPart = (this.bladeSegments[i] ? this.bladeSegments[i] : (this.sword.parts[i] ? this.sword.parts[i] : player));
+					if (!targetPart) continue;
+					const dx = targetPart.position.x - shard.position.x;
+					const dy = targetPart.position.y - shard.position.y;
+					Matter.Body.applyForce(shard, shard.position, {
+						x: dx * 0.00008,
+						y: dy * 0.00008
+					});
+					Matter.Body.setVelocity(shard, {
+						x: shard.velocity.x * 0.96,
+						y: shard.velocity.y * 0.96
+					});
+					if (Matter.Query.collides(this.sword, [shard]).length) {
+						Composite.remove(engine.world, shard);
+						this.brokenParts.splice(i, 1);
+						if(this.bladeSegments[i] && !this.bladeSegments[i].render) {
+							this.bladeSegments[i].render = true; 
+						} else {
+							for(let j = 0; j < this.bladeSegments.length; j++) {
+								if(!this.bladeSegments[j].render) {
+									this.bladeSegments[j].render = true;
+									break;
+								}
+							}
+						}
+					} else {
+						this.bladeSegments[i].render = false;
+					}
+				}
+				if (this.brokenParts.length === 0) {
+					this.isReforming = false;
+					for(let i = 0; i < this.bladeSegments.length; i++) {
+						this.bladeSegments[i].render = true;
+					}
+				}
+			} else if (this.isReforming && !this.sword) {
+				this.brokenParts.forEach(part => {
+					Composite.remove(engine.world, part);
+				});
+				this.isReforming = false;
+			}
+			if (this.isBroken && this.brokenParts.length) {
+				const px = player.position.x;
+				const py = player.position.y;
+				if(m.energy > 0.01) {
+					m.energy -= 0.0034;
+				} else {
+					this.reformSword();
+				}
+				for (let i = 0; i < this.brokenParts.length; i++) {
+					const blade = this.brokenParts[i];
+					const trail = this.bladeTrails[i] || [];
+					const vertices = blade.vertices.map(vertex => ({ x: vertex.x, y: vertex.y }));
+					trail.push(vertices);
+					if (trail.length > 10) {
+						trail.shift();
+					}
+					this.bladeTrails[i] = trail;
+				}
+	
+				for (let i = 0; i < this.bladeTrails.length; i++) {
+					const trail = this.bladeTrails[i];
+	
+					const alphaStep = 1 / trail.length;
+					let alpha = 0;
+	
+					for (let j = 0; j < trail.length; j++) {
+						const vertices = trail[j];
+						ctx.beginPath();
+						ctx.moveTo(vertices[0].x, vertices[0].y);
+	
+						for (let k = 1; k < vertices.length; k++) {
+							ctx.lineTo(vertices[k].x, vertices[k].y);
+						};
+	
+						alpha += alphaStep;
+						ctx.closePath();
+						if(tech.isEnergyHealth) {
+							const eyeColor = m.fieldMeterColor;    
+							const r = eyeColor[1];
+							const g = eyeColor[2];
+							const b = eyeColor[3];
+							const color = `#${r}${r}${g}${g}${b}${b}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+							ctx.fillStyle = color;
+						} else {
+							ctx.fillStyle = `rgba(220, 20, 60, ${alpha})`;
+						}
+						ctx.fill();
+					}
+				}
+				for (let part of this.brokenParts) {
+					part.orbit ??= {
+						a: 300 + Math.random() * 250,
+						b: 100 + Math.random() * 100,
+						angle: Math.random() * Math.PI * 2,
+						speed: 0.03 + Math.random() * 0.03,
+						zOffset: Math.random()
+					};
+					const o = part.orbit;
+					o.angle += o.speed / 2 + o.speed * (m.energy / m.maxEnergy);
+					const targetX = px + o.a * Math.cos(o.angle);
+					const targetY = py + o.b * Math.sin(o.angle);
+					const scale = 1 - o.zOffset * 0.2;
+					const dx = targetX - part.position.x;
+					const dy = targetY - part.position.y;
+					const strength = 0.0001;
+					Matter.Body.applyForce(part, part.position, { x: dx * strength, y: dy * strength });
+					Matter.Body.setVelocity(part, { x: part.velocity.x * 0.98, y: part.velocity.y * 0.98 });
+					ctx.save();
+					ctx.translate(part.position.x, part.position.y);
+					ctx.scale(scale, scale);
+					ctx.beginPath();
+					ctx.lineJoin = "miter";
+					ctx.miterLimit = 100;
+					ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : "crimson";
+					ctx.lineWidth = 5;
+        			ctx.moveTo(part.vertices[0].x - part.position.x, part.vertices[0].y - part.position.y);
+					for (let j = 1; j < part.vertices.length; j++) {
+						ctx.lineTo(part.vertices[j].x - part.position.x, part.vertices[j].y - part.position.y);
+					}
+					ctx.closePath();
+					ctx.stroke();
+					ctx.fillStyle = "black";
+					ctx.fill();
+					ctx.lineJoin = "round";
+					ctx.miterLimit = 10;
+					ctx.stroke();
+					ctx.restore();
+				}
+			}
+		},
 		collision() {
 			if(this.sword) {
 				for (let i = 0; i < mob.length; i++) {
@@ -1001,9 +1274,9 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword") && !tech.sizeIllusion && !tech.infinityEdge
+				return tech.haveGunCheck("sword") && !tech.sizeIllusion && !tech.infinityEdge & !tech.heavenlyArray
 			},
-			requires: "sword, not cantor's theorem, not size-weight illusion",
+			requires: "sword, not cantor's theorem, not size-weight illusion, not dirac sea",
 			effect() {
 				tech.isStabSword = true;
 			},
@@ -1043,9 +1316,9 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword") && !tech.greatSword && !tech.longSword
+				return tech.haveGunCheck("sword") && !tech.greatSword && !tech.longSword & !tech.heavenlyArray
 			},
-			requires: "sword, not greatsword, longsword",
+			requires: "sword, not greatsword, not longsword, not dirac sea",
 			effect() {
 				tech.soundSword = true;
 			},
@@ -1066,7 +1339,7 @@ javascript:(function() {
 			allowed() { 
 				return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword && !tech.longSword
 			},
-			requires: "sword, not plasmon, canton's theorem",
+			requires: "sword, not plasmon, canton's theorem, not longsword, not plasmon",
 			effect() {
 				tech.greatSword = true;
 			},
@@ -1091,14 +1364,35 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword && !tech.greatSword
+				return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword && !tech.greatSword & !tech.heavenlyArray
 			},
-			requires: "sword, not plasmon, canton's theorem",
+			requires: "sword, not plasmon, canton's theorem, not greatsword, not dirac sea",
 			effect() {
 				tech.longSword = true;
 			},
 			remove() {
 				tech.longSword = false;
+			}
+		},
+		{
+			name: "dirac sea",
+			descriptionFunction() {
+				return `sword <b>orbits</b> you while <b>crouching</b> and using sword<br>drains <b class="color-f">energy</b>`
+			},
+			isGunTech: true,
+			maxCount: 1,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() { 
+				return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword && !tech.longSword && !tech.isStabSword
+			},
+			requires: "sword, not plasmon, canton's theorem, not longsword, not silicon carbide",
+			effect() {
+				tech.heavenlyArray = true;
+			},
+			remove() {
+				tech.heavenlyArray = false;
 			}
 		},
 	];
