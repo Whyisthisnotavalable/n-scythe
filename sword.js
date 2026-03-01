@@ -21,8 +21,28 @@ javascript:(function() {
 		isBroken: false,
 		brokenParts: [],
 		isReforming: false,
+		isSlowed: false,
+		technique: { 
+			active: false, 
+			phase: "idle", // idle, slowmo, input, resolve 
+			timer: 0, 
+			target: null, 
+			pattern: [], 
+			progress: 0, 
+			lastKill: 0,
+		},
+		keyLog: [null, null, null, null],
+		keyLogCycle: [0, 0, 0, 0],
+		comboWindow: 35,
+		listen: true,
+		shouldSlow: false,
 		fire() { },
 		do() {
+			if(tech.hartmanEffect) this.updateTechnique();
+			if(this.listen) {
+				window.addEventListener("keydown", this.keyListener.bind(this));
+				this.listen = false;
+			}
 			if(!this.haveEphemera) {
 				this.haveEphemera = true;
 				simulation.ephemera.push({
@@ -94,6 +114,30 @@ javascript:(function() {
 			}
 			this.blades();
 			this.collision();
+			if (this.technique.cutLine) {
+				const c = this.technique.cutLine;
+				ctx.globalCompositeOperation = "exclusion"
+				ctx.fillStyle = `rgba(255,255,255,${c.alpha})`;
+				ctx.fillRect(-50000, -50000, 100000, 100000)
+				ctx.globalCompositeOperation = "source-over"
+
+				ctx.beginPath();
+				ctx.moveTo(c.x1, c.y1);
+				ctx.lineTo(c.x2, c.y2);
+				ctx.strokeStyle = `rgba(200,0,0,${c.alpha})`;
+				ctx.lineWidth = 25;
+				ctx.stroke();
+				ctx.strokeStyle = `rgba(255,0,0,${c.alpha})`;
+				ctx.lineWidth = 20;
+				ctx.stroke();
+				ctx.strokeStyle = `rgba(255,255,255,${c.alpha})`;
+				ctx.lineWidth = 15;
+				ctx.stroke();
+				c.alpha -= 0.03;
+				if (c.alpha <= 0) {
+					this.technique.cutLine = null;
+				}
+			}
 		},
 		chooseFireMethod() {
 			if (tech.isStabSword && m.crouch && input.down) {
@@ -262,6 +306,34 @@ javascript:(function() {
 			}
 		},
 		normalFire() {
+			if(this.technique.active) {
+				if(this.sword) {
+					this.cycle = 0;
+					Matter.Body.setAngularVelocity(this.sword, 0);
+					player.force.x *= 0.01;
+					player.force.y *= 0.01;
+					Composite.remove(engine.world, this.sword);
+					this.sword.parts.forEach(part => {
+						Composite.remove(engine.world, part);
+						const index = bullet.indexOf(part);
+						if (index !== -1) {
+							bullet.splice(index, 1);
+						}
+					});
+					this.brokenParts.forEach(part => {
+						Composite.remove(engine.world, part);
+					});
+					this.sword = undefined;
+					if(this.constraint) {
+						Composite.remove(engine.world, this.constraint);
+						this.constraint = undefined;
+					}
+					this.bladeTrails = [];
+					this.bladeSegments = undefined;
+					m.fireCDcycle = m.cycle + 10;
+				}
+				return;
+			}
 			if(this.constraint) {
 				this.constraint.pointA = player.position;
 			}
@@ -1233,7 +1305,447 @@ javascript:(function() {
 					}
 				}
 			}
-		}
+		},
+		slowDownTime(scale = 0.5, duration = 50) {
+			this.isSlowed = true;
+			const originalDelta = simulation.delta;
+			const self = this;
+			simulation.delta *= scale;
+			simulation.ephemera.push({
+				count: duration,
+				do() {
+					this.count--;
+					if (this.count <= 0) {
+						simulation.delta = originalDelta;
+						self.isSlowed = false;
+						simulation.removeEphemera(this);
+					}
+				}
+			});
+		},
+		keyListener(event) {
+			if (event.repeat) return;
+
+			const sub = simulation.cycle - this.keyLogCycle[this.keyLogCycle.length - 1];
+
+			if (sub < this.comboWindow || this.keyLogCycle[this.keyLogCycle.length - 1] === 0) {
+				this.keyLogCycle.shift();
+				this.keyLogCycle.push(simulation.cycle);
+
+				this.keyLog.shift();
+				this.keyLog.push(event.code);
+			} else {
+				this.keyLog = [null, null, null, event.code];
+				this.keyLogCycle = [0, 0, 0, simulation.cycle];
+			}
+
+			const pattern = [
+				input.key.down,
+				input.key.down,
+				input.key.left,
+				input.key.right,
+			];
+			const arraysEqual = (a, b) =>
+				a.length === b.length && a.every((val, i) => val === b[i]);
+
+			if (arraysEqual(this.keyLog, pattern)) {
+				this.keyLog = [null, null, null, null];
+				this.keyLogCycle = [0, 0, 0, 0];
+				if(m.energy >= 0.5) {
+					this.activateTechnique();
+				} else {
+					simulation.inGameConsole(`<em>This technique requires more <b class="color-f">energy<b><em>`);
+				}
+			}
+		},
+		activateTechnique() {
+			if (this.technique.active) return;
+			if (mob.length === 0) return;
+
+			this.technique.active = true;
+			this.technique.phase = "slowmo";
+			this.technique.timer = 0;
+			this.technique.pattern = [];
+			this.technique.progress = 0;
+		},
+		updateTechnique() {
+			const nodeSpawn = 10;
+			const nodeActive = 18;
+			if (this.technique.active && this.shouldSlow) {
+				function sleep(who) {
+					for (let i = 0, len = who.length; i < len; ++i) {
+						if (!who[i].isSleeping) {
+							who[i].storeVelocity = who[i].velocity
+							who[i].storeAngularVelocity = who[i].angularVelocity
+						}
+						Matter.Sleeping.set(who[i], true)
+					}
+				}
+				sleep(mob);
+				sleep(body);
+				sleep(bullet);
+				sleep([player]);
+				simulation.cycle--;
+
+				ctx.globalCompositeOperation = "hue"
+				ctx.fillStyle = "#ccc";
+				ctx.fillRect(-50000, -50000, 100000, 100000)
+				ctx.globalCompositeOperation = "source-over"
+			} else {
+				if(player.isSleeping && !this.shouldSlow) {
+					function wake(who) {
+						for (let i = 0, len = who.length; i < len; ++i) {
+							Matter.Sleeping.set(who[i], false)
+							if (who[i].storeVelocity) {
+								Matter.Body.setVelocity(who[i], { x: who[i].storeVelocity.x, y: who[i].storeVelocity.y })
+								Matter.Body.setAngularVelocity(who[i], who[i].storeAngularVelocity)
+							}
+						}
+					}
+					wake(mob);
+					wake(body);
+					wake(bullet);
+					wake([player]);
+				}
+				if(!this.isSlowed && this.technique.lastKill + 25 > simulation.cycle) this.slowDownTime();
+				const radius = 1000;
+				const px = player.position.x;
+				const py = player.position.y;
+				const targets = mob.filter(m2=>{
+					if(m2.isMobBullet || m2.isShielded) return false;
+					const dx = m2.position.x - px;
+					const dy = m2.position.y - py;
+					return dx*dx + dy*dy <= radius*radius;
+				});
+				if (targets.length < 2) return;
+				targets.sort((a,b)=>{
+					const aa = Math.atan2(a.position.y-py, a.position.x-px);
+					const bb = Math.atan2(b.position.y-py, b.position.x-px);
+					return aa-bb;
+				});
+				const start = targets[0];
+				const pulse = 1 + Math.sin(simulation.cycle*0.2)*0.15;
+				ctx.beginPath();
+				ctx.arc(start.position.x, start.position.y, 55*pulse, 0, Math.PI*2);
+				ctx.strokeStyle = "rgba(255,80,80,0.85)";
+				ctx.lineWidth = 3;
+				ctx.stroke();
+			}
+			const t = this.technique;
+
+			if (t.phase === "slowmo") {
+				t.timer++;
+				if (t.timer > 10) {
+					const radius = 1000;
+					const px = player.position.x;
+					const py = player.position.y;
+					let targets = mob.filter(m2 => {
+						if(!m2.isMobBullet && !m2.isShielded && !m2.isInvulnerable) {
+							const dx = m2.position.x - px;
+							const dy = m2.position.y - py;
+							return dx*dx + dy*dy <= radius*radius;
+						}
+					});
+
+					if (targets.length <= 1) {
+						this.technique.pattern = [];
+						this.technique.active = false; 
+						this.technique.phase = "idle";
+						this.shouldSlow = false;
+						return;
+					} else {
+						this.shouldSlow = true;
+					}
+					targets.sort((a,b)=>{
+						const aa = Math.atan2(a.position.y-py, a.position.x-px);
+						const bb = Math.atan2(b.position.y-py, b.position.x-px);
+						return aa-bb;
+					});
+
+					const pts = targets.map(m=>({x:m.position.x,y:m.position.y}));
+
+					const pattern = [];
+					const spacing = 80; 
+					let nodeIndex = 0;
+					for (let i = 0; i < pts.length - 1; i++){
+						const p0 = pts[i];
+						const p1 = pts[i+1];
+
+						const dxl = p1.x - p0.x;
+						const dyl = p1.y - p0.y;
+						const dist = Math.sqrt(dxl*dxl + dyl*dyl);
+
+						const samples = Math.max(2, Math.ceil(dist / spacing));
+
+						const mx = (p0.x+p1.x)/2;
+						const my = (p0.y+p1.y)/2;
+
+						const dx = p1.y - p0.y;
+						const dy = -(p1.x - p0.x);
+						const mag = Math.sqrt(dx*dx + dy*dy) || 1;
+
+						const curveStrength = 0.25;
+
+						const cx = mx + (dx/mag)*120*curveStrength;
+						const cy = my + (dy/mag)*120*curveStrength;
+
+						for (let s = 0; s <= samples; s++){
+							const t = s / samples;
+
+							const x =
+								(1-t)*(1-t)*p0.x +
+								2*(1-t)*t*cx +
+								t*t*p1.x;
+
+							const y =
+								(1-t)*(1-t)*p0.y +
+								2*(1-t)*t*cy +
+								t*t*p1.y;
+
+							pattern.push({
+								x,
+								y,
+								hit:false,
+								state:"waiting",
+								timer:0,
+								spawnTime: nodeIndex * 2
+							});
+							nodeIndex++;
+						}
+					}
+
+					this.technique.pattern = pattern;
+					this.technique.targets = targets;
+					this.technique.progress = 0;
+					t.startCycle = m.cycle;
+					t.maxDuration = 30 + pattern.length * 10;
+					t.phase = "input";
+					t.globalTimer = 0;
+					m.energy -= 0.5;
+				}
+				return;
+			}
+			if (t.phase === "input") {
+				const t = this.technique;
+				t.globalTimer++;
+				if (m.cycle - t.startCycle > t.maxDuration){
+					this.technique.active = false; 
+					this.technique.phase = "idle";
+					this.shouldSlow = false;
+					this.technique.lastKill = 0;
+					return;
+				} else {
+					ctx.beginPath();
+					ctx.lineWidth = 3;
+					ctx.arc(m.pos.x, m.pos.y, 35, 0, 2 * Math.PI * (m.cycle - t.startCycle) / t.maxDuration);
+					ctx.stroke();
+				}
+				const point = t.pattern[t.progress];
+				if (!point) return;
+				if (point.state === "spawn" && point.timer > nodeSpawn){
+					point.state = "ready";
+					point.timer = 0;
+				}
+				if (point.state === "ready" && point.timer > nodeActive){
+					this.technique.active = false;
+					this.technique.phase = "idle";
+					this.shouldSlow = false;
+					return;
+				}
+				const mx = simulation.mouseInGame.x;
+				const my = simulation.mouseInGame.y;
+				const lx = t.lastMouseX ?? mx;
+				const ly = t.lastMouseY ?? my;
+				const vx = mx - lx;
+				const vy = my - ly;
+				const wx = point.x - lx;
+				const wy = point.y - ly;
+				const segLenSq = vx*vx + vy*vy;
+				let proj = 0;
+				if (segLenSq > 0)
+					proj = (wx*vx + wy*vy) / segLenSq;
+				proj = Math.max(0, Math.min(1, proj));
+				const closestX = lx + vx*proj;
+				const closestY = ly + vy*proj;
+				const dx = closestX - point.x;
+				const dy = closestY - point.y;
+				if (point.state === "ready" && dx*dx + dy*dy < 40*40){
+					point.hit = true;
+					t.progress++;
+				}
+				t.lastMouseX = mx;
+				t.lastMouseY = my;
+				if (t.progress >= t.pattern.length){
+					this.resolveTechnique();
+				}
+			}
+			if (t.phase === "input") {
+				const t = this.technique;
+				for (let i = 0; i < t.pattern.length; i++) {
+					const p = t.pattern[i];
+					if(!p) continue;
+					if (p.anim === undefined){
+						p.anim = 0;
+						p.dead = false;
+					}
+					if (p.hit && !p.dead){
+						p.anim += 0.1;
+						if (p.anim >= 1){
+							p.anim = 1;
+							p.dead = true;
+						}
+					}
+					if (p.dead) continue;
+					let scale = 1;
+					let alpha = 1;
+					p.timer++;
+					if (p.state === "waiting" && t.globalTimer >= p.spawnTime){
+						p.state = "spawn";
+						p.timer = 0;
+					}
+					if (p.state === "spawn"){
+						const t = Math.min(1, p.timer / nodeSpawn);
+						const k = t*t;
+						alpha = k * 0.9;
+						scale = 1.6 - k * 0.8;
+					}
+					if (p.hit){
+						scale = 1 + p.anim * 1.8;
+						alpha = 1 - p.anim;
+					}
+					ctx.beginPath();
+					ctx.arc(p.x, p.y, 40 * scale, 0, Math.PI * 2);
+					if (p.hit){
+						ctx.strokeStyle = `rgba(255,0,0,${alpha})`;
+						ctx.stroke();
+					}
+					else if (p.state === "ready"){
+						if (i === t.progress){
+							ctx.fillStyle = "rgb(255,0,0)";
+							ctx.fill();
+						} else {
+							ctx.strokeStyle = "rgba(255,80,80,0.9)";
+							ctx.lineWidth = 3;
+							ctx.stroke();
+						}
+					}
+					else if (p.state === "spawn"){
+						ctx.strokeStyle = `rgba(255,0,0,${alpha})`;
+						ctx.stroke();
+					}
+				}
+			}
+		},
+		resolveTechnique() {
+			const t = this.technique;
+			if (!t.targets || !t.targets.length){
+				this.technique.active = false; 
+				this.technique.phase = "idle";
+				this.shouldSlow = false;
+				this.technique.lastKill = simulation.cycle;
+				return;
+			}
+			let sumX=0, sumY=0, sumXY=0, sumXX=0;
+			const n = t.targets.length;
+			for (let m of t.targets){
+				const x = m.position.x;
+				const y = m.position.y;
+				sumX += x;
+				sumY += y;
+				sumXY += x*y;
+				sumXX += x*x;
+			}
+			const denom = (n*sumXX - sumX*sumX);
+			let dirX, dirY, cx, cy;
+			if (Math.abs(denom) < 0.0001) {
+				cx = sumX/n;
+				cy = sumY/n;
+				dirX = 0;
+				dirY = 1;
+			} else {
+				const slope = (n*sumXY - sumX*sumY) / denom;
+				dirX = 1;
+				dirY = slope;
+				const len = Math.hypot(dirX,dirY);
+				dirX/=len;
+				dirY/=len;
+				cx = sumX/n;
+				cy = sumY/n;
+			}
+			const L = 10000;
+			this.technique.cutLine = {
+				x1: cx - dirX*L,
+				y1: cy - dirY*L,
+				x2: cx + dirX*L,
+				y2: cy + dirY*L,
+				alpha:1
+			};
+			for (let m2 of t.targets){
+				let oldLeave = m2.leaveBody;
+				m2.damage(6 * n);
+				Matter.Body.applyForce(m2, m2.position, {
+					x: dirX * 0.8,
+					y: dirY * 0.8 - 0.4
+				});
+				if(!m2.alive) {
+					m2.leaveBody = false;
+					if(oldLeave && m2.mass > 1 && m2.radius > 18) {
+						let v = Matter.Vertices.hull(Matter.Vertices.clockwiseSort(m2.vertices)) //might help with vertex collision issue, not sure
+						if (v.length < 3) continue;
+						const cutPoint = 3 + Math.floor((v.length - 6) * Math.random()) //Math.floor(v.length / 2)
+						const v2 = v.slice(0, cutPoint + 1)
+						v = v.slice(cutPoint - 1)
+						const len = body.length;
+						body[len] = Matter.Bodies.fromVertices(m2.position.x, m2.position.y, v2);
+						Matter.Body.setVelocity(body[len], Vector.mult(m2.velocity, 0.5));
+						Matter.Body.setAngularVelocity(body[len], m2.angularVelocity);
+						body[len].collisionFilter.category = cat.body;
+						body[len].collisionFilter.mask = cat.player | cat.map | cat.body | cat.bullet | cat.mob | cat.mobBullet;
+						body[len].classType = "body";
+						body[len].frictionAir = 0.001
+						body[len].friction = 0.05
+						Composite.add(engine.world, body[len]); //add to world
+
+						const len2 = body.length;
+						body[len2] = Matter.Bodies.fromVertices(m2.position.x, m2.position.y, v);
+						Matter.Body.setVelocity(body[len2], Vector.mult(m2.velocity, 0.5));
+						Matter.Body.setAngularVelocity(body[len2], m2.angularVelocity);
+						body[len2].collisionFilter.category = cat.body;
+						body[len2].collisionFilter.mask = cat.player | cat.map | cat.body | cat.bullet | cat.mob | cat.mobBullet;
+						body[len2].classType = "body";
+						body[len2].frictionAir = 0.001
+						body[len2].friction = 0.05
+						Composite.add(engine.world, body[len2]); //add to world
+						//large mobs shrink so they don't block paths
+						if (body[len].mass + body[len2].mass > 16) {
+							const massLimit = 8 + 6 * Math.random()
+							const shrink = function (that1, that2) {
+								if (that1.mass + that2.mass > massLimit) {
+									const scale = 0.95;
+									Matter.Body.scale(that1, scale, scale);
+									Matter.Body.scale(that2, scale, scale);
+									setTimeout(shrink, 20, that1, that2);
+								}
+							};
+							shrink(body[len], body[len2])
+						}
+						
+						Matter.Body.applyForce(body[len], body[len].position, {
+							x: dirX * 0.02,
+							y: dirY * 0.02 - 0.01
+						});
+						Matter.Body.applyForce(body[len2], body[len2].position, {
+							x: dirX * 0.02,
+							y: dirY * 0.02 - 0.01
+						});
+					}
+				}
+			}
+			this.technique.phase="resolve";
+			this.technique.active=false;
+			this.technique.lastKill = simulation.cycle;
+			this.shouldSlow = false;
+		},
 	};
 	b.guns.push(e);
 	const gunArray = b.guns.filter(
@@ -1393,6 +1905,27 @@ javascript:(function() {
 			},
 			remove() {
 				tech.heavenlyArray = false;
+			}
+		},		
+		{
+			name: "hartman effect",
+			descriptionFunction() {
+				return `use <b class="color-f">energy</b> to split <b>nearby mobs</b><br><b class="color-d">damage</b> scales with number of <b>mobs</b><em style ="float: right; font-family: monospace;font-size:0.8rem;color:#fff;">↓↓←→</em>`
+			},
+			isGunTech: true,
+			maxCount: 1,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() { 
+				return tech.haveGunCheck("sword")
+			},
+			requires: "sword",
+			effect() {
+				tech.hartmanEffect = true;
+			},
+			remove() {
+				tech.hartmanEffect = false;
 			}
 		},
 	];
