@@ -126,6 +126,7 @@ javascript:(function() {
         m.legs = [];
         oldStart(isBuildRun, isTrainingRun);
         setTimeout(()=>{
+            if(isBuildRun) return;
             spider.shipMode();
             m.draw = () => { 
                 m.legs.forEach(leg => {
@@ -138,12 +139,19 @@ javascript:(function() {
                 ctx.rotate(m.angle);
                 ctx.beginPath();
                 ctx.arc(0, 0, 30, 0, 2 * Math.PI);
-                ctx.fillStyle = m.bodyGradient
-                ctx.fill();
-                ctx.arc(15, 0, 4, 0, 2 * Math.PI);
-                ctx.strokeStyle = "#333";
                 ctx.lineWidth = 2;
+                ctx.fillStyle = "black";
+                ctx.strokeStyle = "crimson";
+                ctx.fill();
                 ctx.stroke();
+                ctx.beginPath();
+                ctx.lineTo(0, -10);
+                ctx.lineTo(10, 0);
+                ctx.lineTo(0, 10);
+                ctx.moveTo(30, 0);
+                ctx.lineTo(10, 0)
+                ctx.stroke();
+                ctx.beginPath();
                 ctx.restore();
             }
         }, 100)
@@ -162,6 +170,7 @@ javascript:(function() {
     }
     const spider = {
         shipMode() {
+            m.isAltSkin = true;
             m.drawShard = function(body) {
                 ctx.beginPath();
                 ctx.moveTo(body.vertices[0].x, body.vertices[0].y);
@@ -530,12 +539,19 @@ javascript:(function() {
                     ctx.rotate(m.angle);
                     ctx.beginPath();
                     ctx.arc(0, 0, 30, 0, 2 * Math.PI);
-                    ctx.fillStyle = m.bodyGradient
-                    ctx.fill();
-                    ctx.arc(15, 0, 4, 0, 2 * Math.PI);
-                    ctx.strokeStyle = "#333";
                     ctx.lineWidth = 2;
+                    ctx.fillStyle = "black";
+                    ctx.strokeStyle = "crimson";
+                    ctx.fill();
                     ctx.stroke();
+                    ctx.beginPath();
+                    ctx.lineTo(0, -10);
+                    ctx.lineTo(10, 0);
+                    ctx.lineTo(0, 10);
+                    ctx.moveTo(30, 0);
+                    ctx.lineTo(10, 0)
+                    ctx.stroke();
+                    ctx.beginPath();
                     ctx.restore();
                 }
                 collisionChecks = function (event) {
