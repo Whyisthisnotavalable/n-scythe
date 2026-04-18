@@ -506,6 +506,10 @@ function initP2P() {
         const block_update_interval = 150;
         window.agreedSeed = null;
         window.currentLevelId = null;
+        window.isLevelAuthority = true;
+        window.receivedBlockData = false;
+        window.isSpawningLevelBlocks = false;
+        window.pvp = true;
         const splash = document.getElementById('splash');
         const textHTML = `
             <g class="fade-in" transform="translate(400, 700)">
@@ -571,6 +575,23 @@ function initP2P() {
             .connection-button:hover {
                 background: lightgray;
             }
+            .pvp-button {
+                padding: 4px 8px;
+                border-radius: 6px;
+                border: 1px solid black;
+                background: rgba(0,200,30, 0.9);
+                color: black;
+                cursor: pointer;
+                position: relative;
+                overflow: hidden;
+                font-size: 15px;
+            }
+            .pvp-button:hover {
+                background: lime;
+            }
+            .pvp-disabled {
+                background: #f44336;
+            }
             .id-container {
                 display: flex;
                 align-items: center;
@@ -622,9 +643,17 @@ function initP2P() {
                     <input type="text" id="p2p-remote-id" placeholder="Friend's ID" style="flex: 1; padding: 3px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;">
                     <button id="p2p-connect" class="connection-button" style="padding: 3px 10px; font-size: 12px;">Connect</button>
                 </div>
-                
-                <div id="p2p-status" style="margin-top: 6px; font-size: 12px; padding: 3px 6px; background: rgba(0,0,0,0.05); border-radius: 3px;">
-                    Status: <span class="status-disconnected">Disconnected</span>
+                <div style="display: flex; gap: 4px; margin-top: 8px;">
+                    <div id="p2p-status" style="margin-top: 6px; font-size: 12px; padding: 3px 6px; background: rgba(0,0,0,0.05); border-radius: 3px; flex: 1;">
+                        Status: <span class="status-disconnected">Disconnected</span>
+                    </div>
+                    <label id="pvp" style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                        <span>pvp</span>
+                        <div style="position: relative; width: 40px; height: 20px; background: rgba(0,200,30, 0.9); border-radius: 20px; transition: 0.2s; box-shadow: inset 0 0 3px rgba(0,0,0,0.3);">
+                            <div style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>
+                        </div>
+                        <input type="checkbox" style="display: none;" checked>
+                    </label>
                 </div>
             </div>
         `;
@@ -654,6 +683,25 @@ function initP2P() {
             localStorage.setItem('p2pUsername', username);
             sendUsernameUpdate();
         });
+        const pvpLabel = document.getElementById("pvp");
+        const pvpCheckbox = pvpLabel.querySelector('input');
+        const toggleBg = pvpLabel.querySelector('div[style*="position: relative"]');
+        const toggleKnob = toggleBg.querySelector('div');
+        function updatepvp() {
+            const isEnabled = pvpCheckbox.checked;
+            window.pvp = isEnabled;
+            if (isEnabled) {
+                toggleBg.style.background = "rgba(0,200,30, 0.9)";
+                toggleKnob.style.right = "2px";
+                toggleKnob.style.left = "auto";
+            } else {
+                toggleBg.style.background = "#f44336";
+                toggleKnob.style.right = "auto";
+                toggleKnob.style.left = "2px";
+            }
+        }
+        document.getElementById("pvp").querySelector('input').addEventListener("change", updatepvp);
+        updatepvp();
         const savedUsername = localStorage.getItem('p2pUsername');
         if (savedUsername) {
             username = savedUsername;
@@ -691,14 +739,10 @@ function initP2P() {
             const otherPlayers = playersSnapshot.filter(p => p && p.peerId && p.peerId !== peer.id);
             
             if (otherPlayers.length === 0) {
-                // No players online - show the "no players" message
-                section.style.display = 'block'; // Keep section visible
+                section.style.display = 'block';
                 countElement.textContent = '0';
-                
-                // Ensure noPlayersMsg exists and is visible
                 let noPlayersMsg = document.getElementById('no-players-msg');
                 if (!noPlayersMsg) {
-                    // Create it if it doesn't exist
                     const list = document.getElementById('online-players-list') || 
                                 document.createElement('div');
                     list.id = 'online-players-list';
@@ -714,19 +758,14 @@ function initP2P() {
                 } else {
                     noPlayersMsg.style.display = 'block';
                 }
-                
-                // Clear any existing player list
                 const list = document.getElementById('online-players-list');
                 if (list) {
-                    // Remove all player items but keep the noPlayersMsg
                     const playerItems = list.querySelectorAll('.player-item');
                     playerItems.forEach(item => item.remove());
                 }
                 
                 return;
             }
-            
-            // Players are online - hide noPlayersMsg and show the list
             section.style.display = 'block';
             countElement.textContent = otherPlayers.length.toString();
             
@@ -735,16 +774,11 @@ function initP2P() {
                 console.warn("online-players-list element not found");
                 return;
             }
-            
-            // Hide or remove the noPlayersMsg
             const noPlayersMsg = document.getElementById('no-players-msg');
             if (noPlayersMsg) {
                 noPlayersMsg.style.display = 'none';
             }
-            
-            // Clear the list and add players
             list.replaceChildren();
-            
             for (const player of otherPlayers) {
                 const playerElement = document.createElement('div');
                 playerElement.className = 'player-item';
@@ -1050,7 +1084,7 @@ function initP2P() {
                     case protocol.damage: {
                         const [damage, offset1] = BinaryProtocol.readFloat64(view, offset);
 
-                        if (senderId === clientId) m.takeDamage(damage);
+                        if (senderId === clientId && window.pvp == true) m.takeDamage(damage);
                         break;
                     }
                     case protocol.block_create: {
@@ -1090,36 +1124,50 @@ function initP2P() {
                     }
                     case protocol.block_remove: {
                         if(remotePlayers[senderId] && !remotePlayers[senderId].updateBlocks) return;
-                        const [blockId, offset1] = BinaryProtocol.readUint16(view, offset);
+                        const [blockId, offset1] = BinaryProtocol.readString(view, offset);
                         removeRemoteBlock(blockId, senderId);
                         break;
                     }
                     case protocol.block_request_all: {
-                        sendAllBlocks(senderId);
+                        const [requestedLevel, offset1] = BinaryProtocol.readUint8(view, offset);
+                        if (window.isLevelAuthority && requestedLevel === level.onLevel) {
+                            sendAllBlocks(senderId);
+                        }
                         break;
                     }
                     case protocol.block_all_data: {
                         if(remotePlayers[senderId] && !remotePlayers[senderId].updateBlocks) return;
-                        const [blocksCount, offset1] = BinaryProtocol.readUint16(view, offset);
+                        const [packetLevel, offsetAfterLevel] = BinaryProtocol.readUint8(view, offset);
+                        if (packetLevel !== level.onLevel) {
+                            break;
+                        }
+                        if (!window.isLevelAuthority && !window.receivedBlockData) {
+                            window.receivedBlockData = true;
+                            const localBlocks = body.filter(b => (!b.remoteBlock || !b.isNotHoldable));
+                            for (const b of localBlocks) {
+                                b._p2pRemoveSent = true;
+                                Composite.remove(engine.world, b);
+                            }
+                            body = body.filter(b => b.remoteBlock);
+                        } else if (!window.isLevelAuthority && window.receivedBlockData) {
+                            break;
+                        }
+                        const [blocksCount, offset1] = BinaryProtocol.readUint16(view, offsetAfterLevel);
                         let currentOffset = offset1;
-                        
                         for (let i = 0; i < blocksCount; i++) {
-                            const [blockId, offset2] = BinaryProtocol.readUint16(view, currentOffset);
+                            const [blockId, offset2] = BinaryProtocol.readString(view, currentOffset);
                             const [posX, offset3] = BinaryProtocol.readFloat64(view, offset2);
                             const [posY, offset4] = BinaryProtocol.readFloat64(view, offset3);
                             const [angle, offset5] = BinaryProtocol.readFloat64(view, offset4);
                             const [verticesCount, offset6] = BinaryProtocol.readUint8(view, offset5);
-                            
                             const vertices = [];
                             currentOffset = offset6;
-                            
                             for (let j = 0; j < verticesCount; j++) {
                                 const [vx, offset7] = BinaryProtocol.readFloat64(view, currentOffset);
                                 const [vy, offset8] = BinaryProtocol.readFloat64(view, offset7);
                                 vertices.push(Matter.Vector.create(vx, vy));
                                 currentOffset = offset8;
                             }
-                            
                             createRemoteBlock(blockId, posX, posY, angle, vertices, senderId);
                         }
                         break;
@@ -1444,47 +1492,56 @@ function initP2P() {
                 }
             }
         }
-
+        const _compositeRemove = Composite.remove;
+        Composite.remove = function(world, b, deep) {
+            if (world === engine.world && b && b.id && !b.remoteBlock && !b._p2pRemoveSent) {
+                b._p2pRemoveSent = true;
+                sendBlockRemove(b);
+                knownBlocks.delete(b.id);
+                remoteIdToBlock.delete(b.id);
+            }
+            return _compositeRemove(world, b, deep);
+        };
         function sendAllBlocks(targetId) {
             const connection = connections.find(c => {
                 const senders = connToSenders.get(c);
                 return senders && senders.has(targetId);
             });
-
             if (!connection || !connection.open) return;
-
-            let totalSize = 3; 
+            const encoder = new TextEncoder();
+            let totalSize = 4;
+            totalSize = 5;
             body.forEach(block => {
-                if (!block.remoteBlock) { 
-                    totalSize += 2; 
-                    totalSize += 8 * 3; 
-                    totalSize += 1; 
-                    totalSize += 8 * 2 * block.vertices.length; 
+                if (!block.remoteBlock) {
+                    const outId = String(blockToRemoteId.get(block) || block.id);
+                    const encodedId = encoder.encode(outId);
+                    totalSize += 2 + encodedId.length;
+                    totalSize += 8 * 3;
+                    totalSize += 1;
+                    totalSize += 8 * 2 * block.vertices.length;
                 }
             });
-
             const buffer = new ArrayBuffer(totalSize);
             const view = new DataView(buffer);
             let offset = BinaryProtocol.writeUint8(view, 0, protocol.block_all_data);
             offset = BinaryProtocol.writeUint8(view, offset, clientId);
-            offset = BinaryProtocol.writeUint16(view, offset, body.filter(b => !b.remoteBlock).length);
-
+            offset = BinaryProtocol.writeUint8(view, offset, level.onLevel);
+            offset = BinaryProtocol.writeUint16(view, offset, body.filter(b => (!b.remoteBlock || !b.isNotHoldable)).length);
             body.forEach(block => {
                 if (!block.remoteBlock) {
-                    const outId = blockToRemoteId.get(block) || block.id;
-                    offset = BinaryProtocol.writeUint16(view, offset, outId);
+                    const outId = String(blockToRemoteId.get(block) || block.id);
+                    offset = BinaryProtocol.writeString(view, offset, outId);
                     offset = BinaryProtocol.writeFloat64(view, offset, block.position.x);
                     offset = BinaryProtocol.writeFloat64(view, offset, block.position.y);
                     offset = BinaryProtocol.writeFloat64(view, offset, block.angle);
                     offset = BinaryProtocol.writeUint8(view, offset, block.vertices.length);
-
+        
                     block.vertices.forEach(vertex => {
                         offset = BinaryProtocol.writeFloat64(view, offset, vertex.x);
                         offset = BinaryProtocol.writeFloat64(view, offset, vertex.y);
                     });
                 }
             });
-
             connection.send(buffer);
         }
         function sendBlockCreate(block) {
@@ -1525,27 +1582,42 @@ function initP2P() {
             sendData(buffer);
         }
         function sendBlockRemove(blockOrId) {
-            const buffer = new ArrayBuffer(4);
+            let outId;
+            if (typeof blockOrId === 'string') {
+                outId = blockOrId;
+            } else if (typeof blockOrId === 'number') {
+                outId = String(blockOrId);
+            } else if (blockOrId && typeof blockOrId === 'object') {
+                outId = String(blockToRemoteId.get(blockOrId) || blockOrId.id);
+            }
+            if (outId === undefined) return;
+        
+            const encodedId = new TextEncoder().encode(outId);
+            const buffer = new ArrayBuffer(1 + 1 + 2 + encodedId.length);
             const view = new DataView(buffer);
             let offset = BinaryProtocol.writeUint8(view, 0, protocol.block_remove);
             offset = BinaryProtocol.writeUint8(view, offset, clientId);
-            let outIdRemove;
-            if (typeof blockOrId === 'number') {
-                outIdRemove = blockOrId;
-            } else if (blockOrId && typeof blockOrId === 'object') {
-                outIdRemove = blockToRemoteId.get(blockOrId) || blockOrId.id;
-            }
-            offset = BinaryProtocol.writeUint16(view, offset, outIdRemove);
-
+            offset = BinaryProtocol.writeString(view, offset, outId);
+        
             sendData(buffer);
         }
-        function requestAllBlocks() {
-            const buffer = new ArrayBuffer(2);
+        function requestAllBlocks(retriesLeft = 5) {
+            const requestedLevel = level.onLevel;
+
+            const buffer = new ArrayBuffer(3);
             const view = new DataView(buffer);
             let offset = BinaryProtocol.writeUint8(view, 0, protocol.block_request_all);
             offset = BinaryProtocol.writeUint8(view, offset, clientId);
+            offset = BinaryProtocol.writeUint8(view, offset, requestedLevel);
 
             sendData(buffer);
+            if (retriesLeft > 0 && !window.receivedBlockData) {
+                setTimeout(() => {
+                    if (level.onLevel === requestedLevel && !window.receivedBlockData) {
+                        requestAllBlocks(retriesLeft - 1);
+                    }
+                }, 1000);
+            }
         }
         function sendHole() {
             if(m.fieldMode == 9 && m.hole) {
@@ -2018,9 +2090,19 @@ function initP2P() {
         }
         const oldNext = level.nextLevel;
         level.nextLevel = function() {
+            window.receivedBlockData = false;
+            const peersOnLevel = Object.values(remotePlayers).filter(
+                p => p && p.level === level.onLevel
+            );
+            window.isLevelAuthority = peersOnLevel.length === 0;
+            window.isSpawningLevelBlocks = true;
             oldNext();
+            window.isSpawningLevelBlocks = false;
             Math.seed = Math.initialSeed;
             agreedSeed = Math.seed;
+            if (!window.isLevelAuthority) {
+                setTimeout(() => requestAllBlocks(), 250);
+            }
         };
         setTimeout(validateUsernames, 10)
         function pm(obj, methodName, replacements) {
@@ -2330,7 +2412,7 @@ function initP2P() {
                                 this.endCycle = 0; //bullet ends cycle after doing damage  //also triggers explosion
                                 if(typeof candidates[i].lockedOn.damage == 'function') {
                                     candidates[i].lockedOn.damage(2 * size); //does extra damage to target
-                                } else if(typeof candidates[i].lockedOn.takeDamage == 'function') {
+                                } else if(typeof candidates[i].lockedOn.takeDamage == 'function' && window.pvp == true) {
                                     candidates[i].lockedOn.takeDamage(2 * size);
                                 }
                             }
@@ -4803,15 +4885,15 @@ function initP2P() {
             }
             return hash.toString();
         }
-        function deterministicBlockId(area, vertices, levelSeed, levelId) {
-            const str = `${area},${JSON.stringify(vertices)},${levelSeed}${levelId}`;
+        function deterministicBlockId(area, vertices, levelSeed, levelId, x, y) {
+            const str = `${area},${JSON.stringify(vertices)},${levelSeed}${levelId},${Math.round(x)},${Math.round(y)}`;
             return sha256(str);
         }
         spawn.bodyRect = function (x, y, width, height, chance = 1, properties = { friction: 0.05, frictionAir: 0.001 }) {
             if (Math.random() < chance) {
                 body[body.length] = Bodies.rectangle(x + width / 2, y + height / 2, width, height, properties)
                 const who = body[body.length - 1]
-                const id = deterministicBlockId(who.area, who.vertices.length, Math.seed, level.onLevel);
+                const id = deterministicBlockId(who.area, who.vertices.length, Math.seed, level.onLevel, x, y);
                 who.id = id;
                 who.remoteBlock = false
                 who._lastBlockUpdate = 0
@@ -4819,13 +4901,13 @@ function initP2P() {
                 who.collisionFilter.mask = cat.player | cat.map | cat.body | cat.bullet | cat.mob | cat.mobBullet
                 Composite.add(engine.world, who)
                 who.classType = "body"
-                sendBlockCreate(who)
+                if (window.isLevelAuthority || window.isLevelAuthority) sendBlockCreate(who)
             }
         }
         spawn.bodyVertex = function (x, y, vector, properties) {
             body[body.length] = Matter.Bodies.fromVertices(x, y, Vertices.fromPath(vector), properties)
             const who = body[body.length - 1]
-            const id = deterministicBlockId(who.area, who.vertices.length, Math.seed, level.onLevel);
+            const id = deterministicBlockId(who.area, who.vertices.length, Math.seed, level.onLevel, x, y);
             who.id = id;
             who.remoteBlock = false
             who._lastBlockUpdate = 0
@@ -4833,15 +4915,14 @@ function initP2P() {
             who.collisionFilter.mask = cat.player | cat.map | cat.body | cat.bullet | cat.mob | cat.mobBullet
             Composite.add(engine.world, who)
             who.classType = "body"
-            sendBlockCreate(who)
+            if (window.isLevelAuthority || window.isLevelAuthority) sendBlockCreate(who)
         }
         function removeLocalBlock(block) {
             if (!block) return
-            if (!block.remoteBlock && typeof block.id === 'number') sendBlockRemove(block.id)
+            if (!block.remoteBlock) block._p2pRemoveSent = true;
             Composite.remove(engine.world, block)
             const idx = body.indexOf(block)
             if (idx !== -1) body.splice(idx, 1)
-            knownBlocks.delete(block.id)
         }
 		function spawnPlayer(xPos, yPos, id) {
 			mobs.spawn(0, 0, 6, 20, "transparent");
@@ -8117,7 +8198,7 @@ function initP2P() {
                                     if (me.immuneCycle < me.cycle) me.energy -= DRAIN
                                 } else {
                                     me.energy = 0;
-                                    me.takeDamage((me.tech.isRadioactiveResistance ? 0.00016 * 0.2 : 0.00016) * me.tech.radioactiveDamage * spawn.dmgTomeByLevelsCleared()) //0.00015
+                                    if(window.pvp == true) me.takeDamage((me.tech.isRadioactiveResistance ? 0.00016 * 0.2 : 0.00016) * me.tech.radioactiveDamage * spawn.dmgTomeByLevelsCleared()) //0.00015
                                 }
                             }
                             //aoe damage to mobs
@@ -12817,7 +12898,7 @@ function initP2P() {
                                         x: player.velocity.x * 0.95,
                                         y: player.velocity.y * 0.95
                                     });
-                                    m.takeDamage(damage / Math.sqrt(30) / 100);
+                                    if(window.pvp == true) m.takeDamage(damage / Math.sqrt(30) / 100);
                                     if (me.tech.isPhononWave && me.phononWaveCD < me.cycle) {
                                         me.phononWaveCD = me.cycle + 8 * (1 + me.waves[i].resonanceCount)
                                         me.waves.push({
@@ -12911,8 +12992,8 @@ function initP2P() {
                                     who.force.x += 0.01 * (Math.random() - 0.5) * who.mass
                                     who.force.y += 0.01 * (Math.random() - 0.5) * who.mass
                                     Matter.Body.setVelocity(who, { x: who.velocity.x * 0.95, y: who.velocity.y * 0.95 });
-                                    const vibe = 50 + 30 * 0.15
-                                    m.takeDamage(damage / Math.sqrt(30) / 100);
+                                    //const vibe = 50 + 30 * 0.15 //what is this doing here??
+                                    if(window.pvp == true) m.takeDamage(damage / Math.sqrt(30) / 100);
                                 }
                                 let hits = Matter.Query.ray(mob, v1, v2, 50) //Matter.Query.ray(bodies, startPoint, endPoint, [rayWidth])
                                 for (let j = 0; j < hits.length; j++) {
@@ -13240,7 +13321,7 @@ function initP2P() {
 			};
             me.remotePlayer = true;
             me.onDamage = function(dmg) {
-                sendDamage(dmg, me.id);
+                if(window.pvp == true) sendDamage(dmg, me.id);
             }
             me.onDeath = function() {
                 delete remotePlayers[me.id];
