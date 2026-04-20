@@ -489,6 +489,7 @@ function initP2P() {
             block_all_data: 0x39,
             seed_sync: 0x3A,
             seed_request: 0x3B,
+            block_claim: 0x3C,
 
 			game_event: 0x50,
 			chat_message: 0x51,
@@ -924,7 +925,7 @@ function initP2P() {
                         const [nameLength, offset1] = BinaryProtocol.readUint8(view, offset);
                         const nameBytes = new Uint8Array(view.buffer, offset1, nameLength);
                         const skinName = new TextDecoder().decode(nameBytes);
-                        if (remotePlayers[senderId]) {
+                        if (remotePlayers[senderId] && skinName != "defaultDraw" && skinName != "defaultDrawLegs") {
                             remotePlayers[senderId].skin[skinName]();
                         }
                         break;
@@ -1094,22 +1095,24 @@ function initP2P() {
                         const [posY, offset3] = BinaryProtocol.readFloat64(view, offset2);
                         const [angle, offset4] = BinaryProtocol.readFloat64(view, offset3);
                         const [verticesCount, offset5] = BinaryProtocol.readUint8(view, offset4);
-                        
                         const vertices = [];
                         let currentOffset = offset5;
-                        
                         for (let i = 0; i < verticesCount; i++) {
                             const [vx, offset6] = BinaryProtocol.readFloat64(view, currentOffset);
                             const [vy, offset7] = BinaryProtocol.readFloat64(view, offset6);
                             vertices.push(Matter.Vector.create(vx, vy));
                             currentOffset = offset7;
                         }
-                        
-                        createRemoteBlock(blockId, posX, posY, angle, vertices, senderId);
+                        const [friction, offsetA] = BinaryProtocol.readFloat64(view, currentOffset);
+                        const [frictionAir, offsetB] = BinaryProtocol.readFloat64(view, offsetA);
+                        const [restitution, offsetC] = BinaryProtocol.readFloat64(view, offsetB);
+                        const [density, offsetD] = BinaryProtocol.readFloat64(view, offsetC);
+                        createRemoteBlock(blockId, posX, posY, angle, vertices, senderId, {
+                            friction, frictionAir, restitution, density
+                        });
                         break;
                     }
                     case protocol.block_update: {
-                        if(remotePlayers[senderId] && !remotePlayers[senderId].updateBlocks) return;
                         const [blockId, offset1] = BinaryProtocol.readString(view, offset);
                         const [posX, offset2] = BinaryProtocol.readFloat64(view, offset1);
                         const [posY, offset3] = BinaryProtocol.readFloat64(view, offset2);
@@ -1143,12 +1146,12 @@ function initP2P() {
                         }
                         if (!window.isLevelAuthority && !window.receivedBlockData) {
                             window.receivedBlockData = true;
-                            const localBlocks = body.filter(b => (!b.remoteBlock || !b.isNotHoldable));
-                            for (const b of localBlocks) {
+                            const blocksToWipe = body.filter(b => !b.remoteBlock && !b.isNotHoldable);
+                            for (const b of blocksToWipe) {
                                 b._p2pRemoveSent = true;
                                 Composite.remove(engine.world, b);
                             }
-                            body = body.filter(b => b.remoteBlock);
+                            body = body.filter(b => b.remoteBlock || b.isNotHoldable);
                         } else if (!window.isLevelAuthority && window.receivedBlockData) {
                             break;
                         }
@@ -1168,10 +1171,32 @@ function initP2P() {
                                 vertices.push(Matter.Vector.create(vx, vy));
                                 currentOffset = offset8;
                             }
-                            createRemoteBlock(blockId, posX, posY, angle, vertices, senderId);
+                            const [friction, offsetA] = BinaryProtocol.readFloat64(view, currentOffset);
+                            const [frictionAir, offsetB] = BinaryProtocol.readFloat64(view, offsetA);
+                            const [restitution, offsetC] = BinaryProtocol.readFloat64(view, offsetB);
+                            const [density, offsetD] = BinaryProtocol.readFloat64(view, offsetC);
+                            currentOffset = offsetD;
+                            createRemoteBlock(blockId, posX, posY, angle, vertices, senderId, {
+                                friction, frictionAir, restitution, density
+                            });
                         }
                         break;
                     }
+                    case protocol.block_claim: {
+                        const [blockId, offset1] = BinaryProtocol.readString(view, offset);
+                        const block = remoteIdToBlock.get(blockId) || body.find(b => b.id === blockId);
+                        if (block) {
+                            block.senderId = senderId;
+                            if (!block.remoteBlock) {
+                                block.remoteBlock = true;
+                                block.timeScale = 0;
+                            }
+                            remoteIdToBlock.set(blockId, block);
+                            knownBlocks.add(blockId);
+                        }
+                        break;
+                    }
+
                     case protocol.seed_sync: {
                         const [seed, offset1] = BinaryProtocol.readString(view, offset);
                         if (senderId === clientId || seedUpdateInProgress) {
@@ -1427,7 +1452,7 @@ function initP2P() {
             
             sendData(buffer);
         }
-        function createRemoteBlock(blockId, x, y, angle, vertices, senderId) {
+        function createRemoteBlock(blockId, x, y, angle, vertices, senderId, props = {}) {
             let block = body.find(b => b.id === blockId);
             if (block) {
                 block.remoteBlock = true;
@@ -1437,38 +1462,43 @@ function initP2P() {
             }
             knownBlocks.add(blockId);
             block = Bodies.fromVertices(x, y, [vertices], {
-                render: { fillStyle: '#AAAAAA' },
-                friction: 0.1,
-                restitution: 0.3,
+                friction:    props.friction    ?? 0.05,
+                frictionAir: props.frictionAir ?? 0.001,
+                restitution: props.restitution ?? 0,
                 collisionFilter: {
                     category: cat.body,
                     mask: cat.player | cat.map | cat.body | cat.bullet | cat.mob | cat.mobBullet
                 }
             });
-            if (block) {
-                block.id = blockId;
-                block.remoteBlock = true;
-                block.senderId = senderId;
-                block.lastUpdate = 0;
-
-                Matter.Body.setAngle(block, angle);
-                Composite.add(engine.world, block);
-                body.push(block);
-                remoteIdToBlock.set(blockId, block);
-
-                console.log(`[P2P] Created remote block ${blockId} from player ${senderId}`);
-            }
+            if (!block) return;
+            if (props.density != null) Matter.Body.setDensity(block, props.density);
+            block.id = blockId;
+            block.remoteBlock = true;
+            block.senderId = senderId;
+            block.lastUpdate = 0;
+            block.classType = "body";
+            block._lastBlockUpdate = 0;
+            block.timeScale = 0;
+            Matter.Body.setAngle(block, angle);
+            Matter.Body.setPosition(block, { x, y });
+            Composite.add(engine.world, block);
+            body.push(block);
+            remoteIdToBlock.set(blockId, block);
         }
         function updateRemoteBlock(blockId, x, y, angle, velX, velY, angularVel, senderId, force) {
             const aliased = remoteIdToBlock.get(blockId);
             const block = aliased || body.find(b => b.id === blockId);
             if (!block) return;
-
-            if (block.senderId === senderId || block.lastUpdate < Date.now() - 100 || force) {
+            if (block.senderId === senderId || force) {
+                block.timeScale = 1;
                 Matter.Body.setPosition(block, { x, y });
+                block.positionPrev.x = x;
+                block.positionPrev.y = y;
                 Matter.Body.setAngle(block, angle);
                 Matter.Body.setVelocity(block, { x: velX, y: velY });
                 Matter.Body.setAngularVelocity(block, angularVel);
+                block.force.x = 0;
+                block.force.y = 0;
                 block.lastUpdate = Date.now();
             }
         }
@@ -1477,20 +1507,40 @@ function initP2P() {
             if (aliased && !aliased.remoteBlock) {
                 remoteIdToBlock.delete(blockId);
                 knownBlocks.delete(blockId);
-                console.log(`[P2P] Dropped alias for remote block ${blockId}`);
                 return;
             }
             const index = body.findIndex(b => b.id === blockId && b.remoteBlock);
             if (index !== -1) {
                 const block = body[index];
-                if (block.senderId === senderId) {
+                const senderLevel = remotePlayers[senderId] && remotePlayers[senderId].level;
+                const isStale = senderLevel !== undefined && senderLevel !== level.onLevel;
+                if (block.senderId === senderId || isStale) {
+                    block._p2pRemoveSent = true;
                     Composite.remove(engine.world, block);
                     body.splice(index, 1);
                     knownBlocks.delete(blockId);
                     remoteIdToBlock.delete(blockId);
-                    console.log(`[P2P] Removed remote block ${blockId}`);
                 }
             }
+        }
+        function registerMidGameBlock(block) {
+            if (!block) return;
+            if (typeof block.id === "string") return;
+            block.id = `mg_${level.onLevel}_${block.id}`;
+            block.remoteBlock = false;
+            block._lastBlockUpdate = 0;
+            block.classType = block.classType || "body";
+            if (!block.isNotHoldable) sendBlockCreate(block);
+        }
+        function sendBlockClaim(block) {
+            if (!block || typeof block.id !== "string") return;
+            const encodedId = new TextEncoder().encode(block.id);
+            const buffer = new ArrayBuffer(1 + 1 + 2 + encodedId.length);
+            const view = new DataView(buffer);
+            let offset = BinaryProtocol.writeUint8(view, 0, protocol.block_claim);
+            offset = BinaryProtocol.writeUint8(view, offset, clientId);
+            offset = BinaryProtocol.writeString(view, offset, block.id);
+            sendBlockData(buffer);
         }
         const _compositeRemove = Composite.remove;
         Composite.remove = function(world, b, deep) {
@@ -1509,45 +1559,66 @@ function initP2P() {
             });
             if (!connection || !connection.open) return;
             const encoder = new TextEncoder();
-            let totalSize = 4;
-            totalSize = 5;
-            body.forEach(block => {
-                if (!block.remoteBlock) {
-                    const outId = String(blockToRemoteId.get(block) || block.id);
-                    const encodedId = encoder.encode(outId);
-                    totalSize += 2 + encodedId.length;
-                    totalSize += 8 * 3;
-                    totalSize += 1;
-                    totalSize += 8 * 2 * block.vertices.length;
-                }
+            const blocksToSend = body.filter(b => !b.remoteBlock && !b.isNotHoldable);
+            let totalSize = 5;
+            blocksToSend.forEach(block => {
+                const outId = String(blockToRemoteId.get(block) || block.id);
+                const encodedId = encoder.encode(outId);
+                totalSize += 2 + encodedId.length;
+                totalSize += 8 * 3;
+                totalSize += 1;
+                totalSize += 8 * 2 * block.vertices.length;
+                totalSize += 8 * 4;
             });
             const buffer = new ArrayBuffer(totalSize);
             const view = new DataView(buffer);
             let offset = BinaryProtocol.writeUint8(view, 0, protocol.block_all_data);
             offset = BinaryProtocol.writeUint8(view, offset, clientId);
             offset = BinaryProtocol.writeUint8(view, offset, level.onLevel);
-            offset = BinaryProtocol.writeUint16(view, offset, body.filter(b => (!b.remoteBlock || !b.isNotHoldable)).length);
-            body.forEach(block => {
-                if (!block.remoteBlock) {
-                    const outId = String(blockToRemoteId.get(block) || block.id);
-                    offset = BinaryProtocol.writeString(view, offset, outId);
-                    offset = BinaryProtocol.writeFloat64(view, offset, block.position.x);
-                    offset = BinaryProtocol.writeFloat64(view, offset, block.position.y);
-                    offset = BinaryProtocol.writeFloat64(view, offset, block.angle);
-                    offset = BinaryProtocol.writeUint8(view, offset, block.vertices.length);
-        
-                    block.vertices.forEach(vertex => {
-                        offset = BinaryProtocol.writeFloat64(view, offset, vertex.x);
-                        offset = BinaryProtocol.writeFloat64(view, offset, vertex.y);
-                    });
-                }
+            offset = BinaryProtocol.writeUint16(view, offset, blocksToSend.length);
+            blocksToSend.forEach(block => {
+                const outId = String(blockToRemoteId.get(block) || block.id);
+                const cos = Math.cos(-block.angle);
+                const sin = Math.sin(-block.angle);
+                const cx = block.position.x;
+                const cy = block.position.y;
+                const localVerts = block.vertices.map(v => ({
+                    x: (v.x - cx) * cos - (v.y - cy) * sin,
+                    y: (v.x - cx) * sin + (v.y - cy) * cos,
+                }));
+                offset = BinaryProtocol.writeString(view, offset, outId);
+                offset = BinaryProtocol.writeFloat64(view, offset, block.position.x);
+                offset = BinaryProtocol.writeFloat64(view, offset, block.position.y);
+                offset = BinaryProtocol.writeFloat64(view, offset, block.angle);
+                offset = BinaryProtocol.writeUint8(view, offset, localVerts.length);
+                localVerts.forEach(v => {
+                    offset = BinaryProtocol.writeFloat64(view, offset, v.x);
+                    offset = BinaryProtocol.writeFloat64(view, offset, v.y);
+                });
+                offset = BinaryProtocol.writeFloat64(view, offset, block.friction);
+                offset = BinaryProtocol.writeFloat64(view, offset, block.frictionAir);
+                offset = BinaryProtocol.writeFloat64(view, offset, block.restitution);
+                offset = BinaryProtocol.writeFloat64(view, offset, block.density);
             });
             connection.send(buffer);
         }
         function sendBlockCreate(block) {
+            if (block.isNotHoldable) return;
+            const cos = Math.cos(-block.angle);
+            const sin = Math.sin(-block.angle);
+            const cx = block.position.x;
+            const cy = block.position.y;
+            const localVerts = block.vertices.map(v => {
+                const dx = v.x - cx;
+                const dy = v.y - cy;
+                return {
+                    x: dx * cos - dy * sin,
+                    y: dx * sin + dy * cos,
+                };
+            });
             const encodedId = new TextEncoder().encode(block.id);
             const idLength = encodedId.length;
-            const bufferLength = 1 + 1 + 2 + idLength + 8 * 3 + 1 + 16 * block.vertices.length;
+            const bufferLength = 1 + 1 + 2 + idLength + 8 * 3 + 1 + 16 * localVerts.length + 8 * 4;
             const buffer = new ArrayBuffer(bufferLength);
             const view = new DataView(buffer);
             let offset = BinaryProtocol.writeUint8(view, 0, protocol.block_create);
@@ -1556,30 +1627,35 @@ function initP2P() {
             offset = BinaryProtocol.writeFloat64(view, offset, block.position.x);
             offset = BinaryProtocol.writeFloat64(view, offset, block.position.y);
             offset = BinaryProtocol.writeFloat64(view, offset, block.angle);
-            offset = BinaryProtocol.writeUint8(view, offset, block.vertices.length);
-
-            block.vertices.forEach(vertex => {
-                offset = BinaryProtocol.writeFloat64(view, offset, vertex.x);
-                offset = BinaryProtocol.writeFloat64(view, offset, vertex.y);
+            offset = BinaryProtocol.writeUint8(view, offset, localVerts.length);
+            localVerts.forEach(v => {
+                offset = BinaryProtocol.writeFloat64(view, offset, v.x);
+                offset = BinaryProtocol.writeFloat64(view, offset, v.y);
             });
-
-            sendData(buffer);
+            offset = BinaryProtocol.writeFloat64(view, offset, block.friction);
+            offset = BinaryProtocol.writeFloat64(view, offset, block.frictionAir);
+            offset = BinaryProtocol.writeFloat64(view, offset, block.restitution);
+            offset = BinaryProtocol.writeFloat64(view, offset, block.density);
+ 
+            sendBlockData(buffer);
         }
         function sendBlockUpdate(block, force = false) {
             const buffer = new ArrayBuffer(1 + 1 + 2 + block.id.length + 6 * 8 + 1);
             const view = new DataView(buffer);
+            const vel = clampVelocity(block.velocity);
+            const angVel = Math.abs(block.angularVelocity) < 1e-6 ? 0 : block.angularVelocity;
             let offset = BinaryProtocol.writeUint8(view, 0, protocol.block_update);
             offset = BinaryProtocol.writeUint8(view, offset, clientId);
             offset = BinaryProtocol.writeString(view, offset, block.id);
             offset = BinaryProtocol.writeFloat64(view, offset, block.position.x);
             offset = BinaryProtocol.writeFloat64(view, offset, block.position.y);
             offset = BinaryProtocol.writeFloat64(view, offset, block.angle);
-            offset = BinaryProtocol.writeFloat64(view, offset, block.velocity.x);
-            offset = BinaryProtocol.writeFloat64(view, offset, block.velocity.y);
-            offset = BinaryProtocol.writeFloat64(view, offset, block.angularVelocity);
+            offset = BinaryProtocol.writeFloat64(view, offset, vel.x);
+            offset = BinaryProtocol.writeFloat64(view, offset, vel.y);
+            offset = BinaryProtocol.writeFloat64(view, offset, angVel);
             offset = BinaryProtocol.writeBoolean(view, offset, force);
 
-            sendData(buffer);
+            sendBlockData(buffer);
         }
         function sendBlockRemove(blockOrId) {
             let outId;
@@ -1599,7 +1675,7 @@ function initP2P() {
             offset = BinaryProtocol.writeUint8(view, offset, clientId);
             offset = BinaryProtocol.writeString(view, offset, outId);
         
-            sendData(buffer);
+            sendBlockData(buffer);
         }
         function requestAllBlocks(retriesLeft = 5) {
             const requestedLevel = level.onLevel;
@@ -1618,6 +1694,32 @@ function initP2P() {
                     }
                 }, 1000);
             }
+        }
+        function sendBlockData(buffer) {
+            if (!buffer) return false;
+            if (connections.length === 0) return false;
+            let sent = false;
+            for (const connection of connections) {
+                if (!connection.open) continue;
+                const senders = connToSenders.get(connection);
+                if (senders) {
+                    let onSameLevel = false;
+                    for (const id of senders) {
+                        if (remotePlayers[id] && remotePlayers[id].level === level.onLevel) {
+                            onSameLevel = true;
+                            break;
+                        }
+                    }
+                    if (!onSameLevel) continue;
+                }
+                try {
+                    connection.send(buffer);
+                    sent = true;
+                } catch (error) {
+                    connections = connections.filter(c => c !== connection);
+                }
+            }
+            return sent;
         }
         function sendHole() {
             if(m.fieldMode == 9 && m.hole) {
@@ -1936,7 +2038,15 @@ function initP2P() {
                 }
                 sendScale();
                 if(m.holdingTarget) {
-                    if(typeof m.holdingTarget.id == "string") sendBlockUpdate(m.holdingTarget, true);
+                    if(typeof m.holdingTarget.id == "string") {
+                        if (m.holdingTarget.senderId !== clientId) {
+                            m.holdingTarget.senderId = clientId;
+                            m.holdingTarget.remoteBlock = false;
+                            m.holdingTarget.timeScale = 1;
+                            sendBlockClaim(m.holdingTarget);
+                        }
+                        sendBlockUpdate(m.holdingTarget, true);
+                    }
                 }
                 if(m.fieldMode == 9 && m.hole) {
                     if(m.hole.pos1 && m.hole.pos2) {
@@ -1951,11 +2061,12 @@ function initP2P() {
                 }
                 const now = Date.now()
                 for (const b of body) {
-                    if (!b || b.remoteBlock) continue
+                    if (!b || b.remoteBlock) continue;
                     if (typeof b.id !== "string") continue;
+                    if (b.isNotHoldable) continue;
                     if (!b._lastBlockUpdate || now - b._lastBlockUpdate >= block_update_interval) {
-                        sendBlockUpdate(b)
-                        b._lastBlockUpdate = now
+                        sendBlockUpdate(b, true);
+                        b._lastBlockUpdate = now;
                     }
                 }
                 sendPlayerLevel(level.onLevel);
@@ -2090,7 +2201,15 @@ function initP2P() {
         }
         const oldNext = level.nextLevel;
         level.nextLevel = function() {
+            for (const b of body) {
+                if (!b.remoteBlock) b._p2pRemoveSent = true;
+            }
             window.receivedBlockData = false;
+            const remoteBlocksOnPrev = body.filter(b => b.remoteBlock);
+            for (const b of remoteBlocksOnPrev) {
+                remoteIdToBlock.delete(b.id);
+                knownBlocks.delete(b.id);
+            }
             const peersOnLevel = Object.values(remotePlayers).filter(
                 p => p && p.level === level.onLevel
             );
@@ -2124,6 +2243,23 @@ function initP2P() {
             [/\bwho\.locatePlayer\(\);?/, "if(typeof who.locatePlayer == 'function') who.locatePlayer();"],
             [/\bwho\.damage\([^)]*\);?/, "if(typeof who.damage == 'function') who.damage(damage / Math.sqrt(who.radius)"]
         ]);
+        pm(m, "holding", [
+            [/\bwho\.locatePlayer\(\);?/, "if(typeof who.locatePlayer == 'function') who.locatePlayer();"]
+        ]);
+        const _origLookForBlock = m.lookForBlock;
+        m.lookForBlock = function() {
+            const prevTarget = m.holdingTarget;
+            _origLookForBlock.call(this);
+            if (m.holdingTarget && m.holdingTarget !== prevTarget) {
+                const block = m.holdingTarget;
+                if (typeof block.id === "string") {
+                    block.senderId = clientId;
+                    block.remoteBlock = false;
+                    block.timeScale = 1;
+                    sendBlockClaim(block);
+                }
+            }
+        };
         function wrapAllBulletFunctions(e){
             const t={};
             for(const[r,i] of Object.entries(e)){
@@ -4897,11 +5033,12 @@ function initP2P() {
                 who.id = id;
                 who.remoteBlock = false
                 who._lastBlockUpdate = 0
+                if (!window.isLevelAuthority && window.isSpawningLevelBlocks) who._p2pRemoveSent = true
                 who.collisionFilter.category = cat.body
                 who.collisionFilter.mask = cat.player | cat.map | cat.body | cat.bullet | cat.mob | cat.mobBullet
                 Composite.add(engine.world, who)
                 who.classType = "body"
-                if (window.isLevelAuthority || window.isLevelAuthority) sendBlockCreate(who)
+                if (window.isLevelAuthority || !window.isSpawningLevelBlocks) sendBlockCreate(who)
             }
         }
         spawn.bodyVertex = function (x, y, vector, properties) {
@@ -4911,11 +5048,12 @@ function initP2P() {
             who.id = id;
             who.remoteBlock = false
             who._lastBlockUpdate = 0
+            if (!window.isLevelAuthority && window.isSpawningLevelBlocks) who._p2pRemoveSent = true
             who.collisionFilter.category = cat.body
             who.collisionFilter.mask = cat.player | cat.map | cat.body | cat.bullet | cat.mob | cat.mobBullet
             Composite.add(engine.world, who)
             who.classType = "body"
-            if (window.isLevelAuthority || window.isLevelAuthority) sendBlockCreate(who)
+            if (window.isLevelAuthority || !window.isSpawningLevelBlocks) sendBlockCreate(who)
         }
         function removeLocalBlock(block) {
             if (!block) return
@@ -8798,6 +8936,7 @@ function initP2P() {
                     });
                     const block = body[body.length - 1]
                     Composite.add(engine.world, block); //add to world
+                    registerMidGameBlock(block);
                     //reverse velocity and make sure it's above 40
                     const unit = Vector.mult(Vector.normalise(who.velocity), -Math.max(40, who.speed))
                     Matter.Body.setVelocity(block, unit);
@@ -9617,6 +9756,7 @@ function initP2P() {
                 });
                 const who = body[body.length - 1]
                 Composite.add(engine.world, who); 
+                registerMidGameBlock(who);
                 me.throwCharge = 4;
                 me.holdingTarget = who
                 me.isHolding = true;
@@ -12514,13 +12654,13 @@ function initP2P() {
                             if (me.crouch) {
                                 b2.droneRadioactive({
                                     x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
-                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
+                                    y:  me.pos.y + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
                                 }, 45, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(45 * me.fireCDscale); // cool down
                             } else {
                                 b2.droneRadioactive({
                                     x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
-                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
+                                    y:  me.pos.y + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
                                 }, 10, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(25 * me.fireCDscale); // cool down
                             }
@@ -12528,13 +12668,13 @@ function initP2P() {
                             if (me.crouch) {
                                 b2.drone({
                                     x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 5 * (Math.random() - 0.5),
-                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 5 * (Math.random() - 0.5)
+                                    y:  me.pos.y + 30 * me.scale * Math.sin(me.angle2) + 5 * (Math.random() - 0.5)
                                 }, 50, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(4 * me.fireCDscale); // cool down
                             } else {
                                 b2.drone({
                                     x: me.pos.x + 30 * me.scale * Math.cos(me.angle2) + 10 * (Math.random() - 0.5),
-                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
+                                    y:  me.pos.y + 30 * me.scale * Math.sin(me.angle2) + 10 * (Math.random() - 0.5)
                                 }, 15, me.id)
                                 me.fireCDcycle = me.cycle + Math.floor(3 * me.fireCDscale); // cool down
                             }
@@ -12552,7 +12692,7 @@ function initP2P() {
                                 x: 0.7 * me.velocity.x + SPEED * Math.cos(dir),
                                 y: 0.5 * me.velocity.y + SPEED * Math.sin(dir)
                             }
-                            const position = { x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) }
+                            const position = { x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.y + 30 * me.scale * Math.sin(me.angle2) }
 
                             b2.foam(position, Vector.rotate(velocity, spread), radius, me.id)
                             me.applyKnock(velocity)
@@ -12570,7 +12710,7 @@ function initP2P() {
                                 x: 0.7 * me.velocity.x + SPEED * Math.cos(dir),
                                 y: 0.5 * me.velocity.y + SPEED * Math.sin(dir)
                             }
-                            const position = { x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2) }
+                            const position = { x: me.pos.x + 30 * me.scale * Math.cos(me.angle2), y:  me.pos.y + 30 * me.scale * Math.sin(me.angle2) }
                             b2.foam(position, Vector.rotate(velocity, spread), radius, me.id)
                             me.applyKnock(velocity)
                             me.fireCDcycle = me.cycle + Math.floor(1.5 * me.fireCDscale);
@@ -12582,7 +12722,7 @@ function initP2P() {
                         } else {
                             const where = {
                                 x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
-                                y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
+                                y:  me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                             }
                             const closest = {
                                 distance: 10000,
@@ -12677,7 +12817,7 @@ function initP2P() {
                             } else {
                                 const pos = {
                                     x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
-                                    y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
+                                    y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                                 }
                                 let speed = 36
                                 if (Matter.Query.point(map, pos).length > 0) speed = -2 //don't launch if mine will spawn inside map
@@ -12687,7 +12827,7 @@ function initP2P() {
                         } else {
                             const pos = {
                                 x: me.pos.x + 30 * me.scale * Math.cos(me.angle2),
-                                y:  me.pos.x + 30 * me.scale * Math.sin(me.angle2)
+                                y: me.pos.y + 30 * me.scale * Math.sin(me.angle2)
                             }
                             let speed = 23
                             if (Matter.Query.point(map, pos).length > 0) speed = -2 //don't launch if mine will spawn inside map
