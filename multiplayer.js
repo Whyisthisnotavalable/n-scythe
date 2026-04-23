@@ -108,8 +108,7 @@ function initP2P() {
                 presenceRef.on("value", (snap) => {
                     const val = snap.val();
                     const count = val ? Object.keys(val).length : 0;
-                    console.log(`[Firebase] Presence update: ${count} players online`);
-
+                    //console.log(`[Firebase] Presence update: ${count} players online`);
                     if (!val) {
                         onlinePlayers.clear();
                         if (typeof updateOnlinePlayersList === "function") updateOnlinePlayersList();
@@ -405,7 +404,7 @@ function initP2P() {
         window.seedUpdateInProgress = false;
         window.lastSeedUpdateTime = 0;
         window.remotePlayerLevel = new Map();
-        window.debugFirebase = true;
+        window.debugFirebase = false;
         const seedUpdateCD = 1000;
 		const BinaryProtocol = {
 			writeUint8: (view, offset, value) => {
@@ -511,6 +510,7 @@ function initP2P() {
         window.receivedBlockData = false;
         window.isSpawningLevelBlocks = false;
         window.pvp = true;
+        let pendingBlockCreates = [];
         const splash = document.getElementById('splash');
         const textHTML = `
             <g class="fade-in" transform="translate(400, 700)">
@@ -1090,6 +1090,10 @@ function initP2P() {
                     }
                     case protocol.block_create: {
                         if(remotePlayers[senderId] && !remotePlayers[senderId].updateBlocks) return;
+                        if (window.isSpawningLevelBlocks) {
+                            pendingBlockCreates.push({ view: new DataView(view.buffer.slice(0)), offset, senderId });
+                            return;
+                        }
                         const [blockId, offset1] = BinaryProtocol.readString(view, offset);
                         const [posX, offset2] = BinaryProtocol.readFloat64(view, offset1);
                         const [posY, offset3] = BinaryProtocol.readFloat64(view, offset2);
@@ -1113,6 +1117,7 @@ function initP2P() {
                         break;
                     }
                     case protocol.block_update: {
+                        if (senderId === clientId) return;
                         const [blockId, offset1] = BinaryProtocol.readString(view, offset);
                         const [posX, offset2] = BinaryProtocol.readFloat64(view, offset1);
                         const [posY, offset3] = BinaryProtocol.readFloat64(view, offset2);
@@ -1126,12 +1131,14 @@ function initP2P() {
                         break;
                     }
                     case protocol.block_remove: {
+                        if (senderId === clientId) return;
                         if(remotePlayers[senderId] && !remotePlayers[senderId].updateBlocks) return;
                         const [blockId, offset1] = BinaryProtocol.readString(view, offset);
                         removeRemoteBlock(blockId, senderId);
                         break;
                     }
                     case protocol.block_request_all: {
+                        if (senderId === clientId) return;
                         const [requestedLevel, offset1] = BinaryProtocol.readUint8(view, offset);
                         if (window.isLevelAuthority && requestedLevel === level.onLevel) {
                             sendAllBlocks(senderId);
@@ -1139,6 +1146,7 @@ function initP2P() {
                         break;
                     }
                     case protocol.block_all_data: {
+                        if (senderId === clientId) return;
                         if(remotePlayers[senderId] && !remotePlayers[senderId].updateBlocks) return;
                         const [packetLevel, offsetAfterLevel] = BinaryProtocol.readUint8(view, offset);
                         if (packetLevel !== level.onLevel) {
@@ -1453,6 +1461,7 @@ function initP2P() {
             sendData(buffer);
         }
         function createRemoteBlock(blockId, x, y, angle, vertices, senderId, props = {}) {
+            if(senderId == clientId) return;
             let block = body.find(b => b.id === blockId);
             if (block) {
                 block.remoteBlock = true;
@@ -1489,7 +1498,8 @@ function initP2P() {
             const aliased = remoteIdToBlock.get(blockId);
             const block = aliased || body.find(b => b.id === blockId);
             if (!block) return;
-            if (block.senderId === senderId || force) {
+            if (!block.remoteBlock && !force) return;
+            if ((block.senderId === senderId || force) && senderId != clientId) {
                 block.timeScale = 1;
                 Matter.Body.setPosition(block, { x, y });
                 block.positionPrev.x = x;
@@ -2065,7 +2075,7 @@ function initP2P() {
                     if (typeof b.id !== "string") continue;
                     if (b.isNotHoldable) continue;
                     if (!b._lastBlockUpdate || now - b._lastBlockUpdate >= block_update_interval) {
-                        sendBlockUpdate(b, true);
+                        sendBlockUpdate(b, false);
                         b._lastBlockUpdate = now;
                     }
                 }
@@ -2205,21 +2215,31 @@ function initP2P() {
                 if (!b.remoteBlock) b._p2pRemoveSent = true;
             }
             window.receivedBlockData = false;
+            pendingBlockCreates = [];
             const remoteBlocksOnPrev = body.filter(b => b.remoteBlock);
             for (const b of remoteBlocksOnPrev) {
                 remoteIdToBlock.delete(b.id);
                 knownBlocks.delete(b.id);
             }
+            oldNext();
+        };
+        const _origLevelStart = level.start;
+        level.start = function() {
             const peersOnLevel = Object.values(remotePlayers).filter(
                 p => p && p.level === level.onLevel
             );
             window.isLevelAuthority = peersOnLevel.length === 0;
             window.isSpawningLevelBlocks = true;
-            oldNext();
+            _origLevelStart.call(this);
             window.isSpawningLevelBlocks = false;
-            Math.seed = Math.initialSeed;
-            agreedSeed = Math.seed;
+
             if (!window.isLevelAuthority) {
+                const toWipe = body.filter(b => !b.remoteBlock && !b.isNotHoldable);
+                for (const b of toWipe) {
+                    b._p2pRemoveSent = true;
+                    Composite.remove(engine.world, b);
+                }
+                body = body.filter(b => b.remoteBlock || b.isNotHoldable);
                 setTimeout(() => requestAllBlocks(), 250);
             }
         };
@@ -11287,7 +11307,7 @@ function initP2P() {
                     if (me.isHolding) {
                         me.drawHold(me.holdingTarget);
                         me.holding();
-                        me.throwBlock();
+                        if (typeof me.throwBlock === "function") me.throwBlock();
                     } else if (me.inputField) {
                         me.holdingTarget = null; //clears holding target (this is so you only pick up right after the field button is released and a hold target exists)
                         if (me.fieldCDcycle < me.cycle) {
