@@ -127,31 +127,13 @@ function initP2P() {
                     updateOnlinePlayers(players);
                 });
 
-                if (peer && peer.id) {
-                    registerMyPresence();
-                    listenForMyInvites();
-                } else {
-                    const checkPeer = () => {
-                        if (peer && peer.id) {
-                            registerMyPresence();
-                            listenForMyInvites();
-                            return true;
-                        }
-                        return false;
-                    };
+                if (peer) {
+                    peer.on("open", () => {
+                        console.log("[P2P] Peer ready:", peer.id);
 
-                    if (!checkPeer()) {
-                        let attempts = 0;
-                        const poll = setInterval(() => {
-                            attempts++;
-                            if (checkPeer()) {
-                                clearInterval(poll);
-                            } else if (attempts > 20) {
-                                clearInterval(poll);
-                                console.warn('[Firebase] PeerJS not ready after 10 seconds');
-                            }
-                        }, 500);
-                    }
+                        registerMyPresence();
+                        listenForMyInvites();
+                    });
                 }
 
             } catch (err) {
@@ -299,6 +281,9 @@ function initP2P() {
                 created: Date.now()
             };
             inviteRef.set(payload).catch(err => console.error('[Firebase] Failed to send invite:', err));
+            inviteRef.set(payload).then(() => {
+                inviteRef.onDisconnect().remove();
+            });
         }
 
         function sendJoinParty(leaderPeerId) {
@@ -13515,7 +13500,199 @@ function initP2P() {
                 }
             }
         });
+        level.sewers = function() {
+            level.announceText(0, 25, true)
+            level.announceMobTypes()
+            const button1 = level.button(6600, 2675)
+            // const hazard = level.hazard(4550, 2750, 4550, 150)
+            const hazard = level.hazard(simulation.isHorizontalFlipped ? -4550 - 4550 : 4550, 2750, 4550, 150)
+            let balance1, balance2, balance3, balance4, rotor
 
+            const drip1 = level.drip(6100, 1900, 2900, 100) // drip(x, yMin, yMax, period = 100, color = "hsla(160, 100%, 35%, 0.5)") {
+            const drip2 = level.drip(7300, 1900, 2900, 150)
+            const drip3 = level.drip(8750, 1900, 2900, 70)
+            level.custom = () => {
+                drip1.draw();
+                drip2.draw();
+                drip3.draw();
+                button1.query();
+                button1.draw();
+                ctx.fillStyle = "hsl(175, 15%, 76%)"
+                ctx.fillRect(9100, 2200, 800, 400)
+                ctx.fillStyle = "rgba(0,0,0,0.03)" //shadows
+                ctx.fillRect(6250, 2025, 700, 650)
+                ctx.fillRect(8000, 2025, 600, 575)
+                level.exit.drawAndCheck();
+                level.enter.draw();
+            };
+            level.customTopLayer = () => {
+                rotor.rotate();
+
+                ctx.fillStyle = "#233"
+                ctx.beginPath();
+                ctx.arc(balance1.center.x, balance1.center.y, 9, 0, 2 * Math.PI);
+                ctx.moveTo(balance2.center.x, balance2.center.y)
+                ctx.arc(balance2.center.x, balance2.center.y, 9, 0, 2 * Math.PI);
+                ctx.moveTo(balance3.center.x, balance3.center.y)
+                ctx.arc(balance3.center.x, balance3.center.y, 9, 0, 2 * Math.PI);
+                ctx.moveTo(balance4.center.x, balance4.center.y)
+                ctx.arc(balance4.center.x, balance4.center.y, 9, 0, 2 * Math.PI);
+                ctx.moveTo(balance5.center.x, balance5.center.y)
+                ctx.arc(balance5.center.x, balance5.center.y, 9, 0, 2 * Math.PI);
+                ctx.moveTo(rotor.center.x, rotor.center.y)
+                ctx.arc(rotor.center.x, rotor.center.y, 9, 0, 2 * Math.PI);
+                ctx.fill();
+                hazard.query();
+                hazard.level(button1.isUp)
+            };
+
+            level.setPosToSpawn(0, -50); //normal spawn
+
+            spawn.mapRect(level.enter.x, level.enter.y + 20, 100, 20);
+            level.exit.x = 9700;
+            level.exit.y = 2560;
+            level.defaultZoom = 1800
+            simulation.zoomTransition(level.defaultZoom)
+            document.body.style.backgroundColor = "hsl(138, 3%, 74%)";
+            color.map = "#3d4240"
+            powerUps.spawnStartingPowerUps(3475, 1775);
+            spawn.debris(4575, 2550, 1600, 9); //16 debris per level
+            spawn.debris(7000, 2550, 2000, 7); //16 debris per level
+
+            spawn.mapRect(-500, -600, 200, 800); //left entrance wall
+            spawn.mapRect(-400, -600, 3550, 200); //ceiling
+            spawn.mapRect(-400, 0, 3000, 200); //floor
+            // spawn.mapRect(300, -500, 50, 400); //right entrance wall
+            // spawn.bodyRect(312, -100, 25, 100);
+            spawn.bodyRect(1450, -300, 150, 50);
+
+            const xPos = seededShuffle([600, 1250, 2000]);
+            spawn.mapRect(xPos[0], -200, 300, 100);
+            spawn.mapRect(xPos[1], -250, 300, 300);
+            spawn.mapRect(xPos[2], -150, 300, 200);
+
+            spawn.bodyRect(3100, 410, 75, 100);
+            spawn.bodyRect(2450, -25, 250, 25);
+
+            spawn.mapRect(3050, -600, 200, 800); //right down tube wall
+            spawn.mapRect(3100, 0, 1200, 200); //tube right exit ceiling
+            spawn.mapRect(4200, 0, 200, 1900);
+            spawn.mapVertex(3500, 1000, "-500 -500  -400 -600   400 -600 500 -500   500 500 400 600  -400 600 -500 500");
+            spawn.mapVertex(3600, 1950, "-400 -40  -350 -90   350 -90 400 -40   400 40 350 90  -350 90 -400 40");
+            spawn.mapRect(3925, 2290, 310, 50);
+            spawn.mapRect(3980, 2280, 200, 50);
+
+            spawn.mapRect(2625, 2290, 650, 50);
+            spawn.mapRect(2700, 2280, 500, 50);
+
+            spawn.mapRect(2400, 0, 200, 1925); //left down tube wall
+            spawn.mapRect(600, 2300, 3750, 200);
+            spawn.bodyRect(3800, 275, 125, 125);
+
+            spawn.mapRect(4200, 1700, 5000, 200);
+            spawn.mapRect(4150, 2300, 200, 400);
+
+            spawn.mapRect(600, 1700, 2000, 200); //bottom left room ceiling
+            spawn.mapRect(500, 1700, 200, 800); //left wall
+            spawn.mapRect(675, 1875, 325, 150, 0.5);
+
+            spawn.mapRect(4450, 2900, 4900, 200); //boss room floor
+            spawn.mapRect(4150, 2600, 400, 500);
+            spawn.mapRect(6250, 2675, 700, 325);
+            spawn.mapRect(8000, 2600, 600, 400);
+            spawn.bodyRect(5875, 2725, 200, 200);
+            spawn.bodyRect(6800, 2490, 50, 50);
+            spawn.bodyRect(6800, 2540, 50, 50);
+            spawn.bodyRect(6800, 2590, 50, 50);
+            spawn.bodyRect(8225, 2225, 100, 100);
+            spawn.mapRect(6250, 1875, 700, 150);
+            spawn.mapRect(8000, 1875, 600, 150);
+
+            spawn.mapRect(9100, 1700, 900, 500); //exit
+            spawn.mapRect(9100, 2600, 900, 500);
+            spawn.mapRect(9900, 1700, 200, 1400); //back wall
+            // spawn.mapRect(9300, 2150, 50, 250);
+            spawn.mapRect(9300, 2590, 650, 25);
+            spawn.mapRect(9700, 2580, 100, 50);
+
+
+            spawn.randomGroup(1300, 2100, 0.1);
+            spawn.randomMob(8300, 2100, 0.1);
+            spawn.randomSmallMob(2575, -75, 0.1); //entrance
+            spawn.randomMob(8125, 2450, 0.1);
+            spawn.randomSmallMob(3200, 250, 0.1);
+            spawn.randomMob(2425, 2150, 0.1);
+            spawn.randomSmallMob(3500, 250, 0.2);
+            spawn.randomMob(3800, 2175, 0.2);
+            spawn.randomSmallMob(2500, -275, 0.2); //entrance
+            spawn.randomMob(4450, 2500, 0.2);
+            spawn.randomMob(6350, 2525, 0.2);
+            spawn.randomGroup(9200, 2400, 0.3);
+            spawn.randomSmallMob(1900, -250, 0.3); //entrance
+            spawn.randomMob(1500, 2100, 0.4);
+            spawn.randomSmallMob(1700, -150, 0.4); //entrance
+            spawn.randomMob(8800, 2725, 0.5);
+            spawn.randomMob(7300, 2200, 0.5);
+            spawn.randomMob(2075, 2025, 0.5);
+            spawn.randomMob(3475, 2175, 0.5);
+            spawn.randomMob(8900, 2825, 0.5);
+            spawn.randomMob(9600, 2425, 0.9);
+            spawn.randomMob(3600, 1725, 0.9);
+            spawn.randomMob(4100, 1225, 0.9);
+            spawn.randomMob(2825, 400, 0.9);
+            spawn.randomLevelBoss(6000, 2300);
+            spawn.secondaryBossChance(7725, 2275)
+            //spawn.randomHigherTierMob(2431, 2086)
+
+            powerUps.addResearchToLevel() //needs to run after mobs are spawned
+
+            if (simulation.isHorizontalFlipped) { //flip the map horizontally
+                level.flipHorizontal(); //only flips map,body,mob,powerUp,cons,consBB, exit
+                // rotor(x, y, width, height, density = 0.001, angle = 0, frictionAir = 0.001, angularVelocity = 0, rotationForce = 0.0005) {
+                // rotor = level.rotor(-5100, 2475, 0.001) //rotates other direction because flipped
+                rotor = level.rotor(-5600, 2390, 850, 50, 0.001, 0, 0.01, 0, 0.001) //balance(x, y, width, height, density = 0.001, angle = 0, frictionAir = 0.001, angularVelocity = 0, rotationForce = 0.0005) {
+                balance1 = level.rotor(-300 - 25, -395, 25, 390, 0.001) //entrance
+                balance2 = level.rotor(-2605 - 390, 500, 390, 25, 0.001) //falling
+                balance3 = level.rotor(-2608 - 584, 1900, 584, 25, 0.001) //falling
+                balance4 = level.rotor(-9300 - 25, 2205, 25, 380, 0.001) //exit
+                balance5 = level.rotor(-2605 - 390, 1100, 390, 25, 0.001) //falling
+                // boost1.boostBounds.min.x = -boost1.boostBounds.min.x - 100
+                // boost1.boostBounds.max.x = -boost1.boostBounds.max.x + 100
+                // level.setPosToSpawn(300, -700); //-x  // no need since 0
+                button1.min.x = -button1.min.x - 126 // flip the button horizontally
+                button1.max.x = -button1.max.x + 126 // flip the button horizontally
+                drip1.x *= -1
+                drip2.x *= -1
+                drip3.x *= -1
+                level.custom = () => {
+                    drip1.draw();
+                    drip2.draw();
+                    drip3.draw();
+
+                    button1.query();
+                    button1.draw();
+                    rotor.rotate();
+
+                    ctx.fillStyle = "hsl(175, 15%, 76%)"
+                    ctx.fillRect(-9900, 2200, 800, 400)
+                    ctx.fillStyle = "rgba(0,0,0,0.03)" //shadows
+                    ctx.fillRect(-6950, 2025, 700, 650)
+                    ctx.fillRect(-8600, 2025, 600, 575)
+                    level.exit.drawAndCheck();
+
+                    level.enter.draw();
+                };
+                // level.customTopLayer = () => {};
+            } else {
+                // rotor = level.rotor(5100, 2475, -0.001)
+                rotor = level.rotor(4700, 2390, 850, 50, 0.001, 0, 0.01, 0, -0.001) //balance(x, y, width, height, density = 0.001, angle = 0, frictionAir = 0.001, angularVelocity = 0, rotationForce = 0.0005) {
+                balance1 = level.rotor(300, -395, 25, 390, 0.001) //entrance
+                balance2 = level.rotor(2605, 500, 390, 25, 0.001) //falling
+                balance3 = level.rotor(2608, 1900, 584, 25, 0.001) //falling
+                balance4 = level.rotor(9300, 2205, 25, 380, 0.001) //exit
+                balance5 = level.rotor(2605, 1100, 390, 25, 0.001) //falling
+            }
+        }
         const chatStyle = document.createElement("style");
         chatStyle.textContent = `
         #chat-input {
