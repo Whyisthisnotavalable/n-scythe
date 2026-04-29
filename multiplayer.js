@@ -496,6 +496,7 @@ function initP2P() {
         window.isSpawningLevelBlocks = false;
         window.pvp = true;
         let pendingBlockCreates = [];
+        const pendingConnections = new Set();
         const splash = document.getElementById('splash');
         const textHTML = `
             <g class="fade-in" transform="translate(400, 700)">
@@ -812,16 +813,17 @@ function initP2P() {
         }
         function connectToPlayer(targetPeerId) {
             const remoteIdInput = document.getElementById("p2p-remote-id");
-            remoteIdInput.value = targetPeerId;
-            
+            if (remoteIdInput) remoteIdInput.value = targetPeerId;
+            if (connections.some(c => c.peer === targetPeerId && c.open)) {
+                updateStatus("Already connected", "status-connected");
+                return;
+            }
+            if (pendingConnections.has(targetPeerId)) {
+                updateStatus("Already connecting...", "status-connecting");
+                return;
+            }
             updateStatus("Connecting...", "status-connecting");
-            const connection = connManager.connectTo(targetPeerId);
-
-            connection.on("open", () => setupConnection(connection));
-            connection.on("error", (err) => {
-                log("Connection failed: " + err, "error");
-                updateStatus("Connection failed", "status-disconnected");
-            });
+            connectToPeer(targetPeerId);
         }
 		function log(message, level = "info") {
             if (!CONFIG.debug) return;
@@ -1806,19 +1808,11 @@ function initP2P() {
             };
         }
         function ensureBidirectional(conn) {
-            if (!connections.some(c => c.peer === conn.peer)) {
-                const backConn = peer.connect(conn.peer);
-                backConn.on("open", () => setupConnection(backConn));
-                backConn.on("error", () => {
-                    
-                    setTimeout(() => ensureBidirectional(conn), 2000);
-                });
-            }
+            connectToPeer(conn.peer);
         }
         function broadcastPeerList() {
             if (connections.length === 0) return;
-            const peerList = connections.map(c => c.peer).concat(peer.id);
-
+            const peerList = connections.filter(c => c.open).map(c => c.peer).concat(peer.id);
             for (const conn of connections) {
                 if (conn.open) {
                     try {
@@ -1829,32 +1823,65 @@ function initP2P() {
                 }
             }
         }
+        setInterval(() => {
+            if (connections.some(c => c.open)) broadcastPeerList();
+        }, 3000);
         function handlePeerList(peerIds, sourceConn) {
             if (peer.disconnected) {
                 reconnect();
                 return;
             }
-            const incoming = new Set(peerIds);
-            for (const id of incoming) {
-                if (id !== peer.id && !connections.some(c => c.peer === id)) {
-                    const conn = peer.connect(id);
-                    conn.on("open", () => {
-                        setupConnection(conn);
-                        broadcastPeerList();
-                    });
-                    conn.on("error", () => {
-                        console.warn("Connection failed, retrying:", id);
-                        setTimeout(() => {
-                            if (!connections.some(c => c.peer === id)) {
-                                handlePeerList([id], sourceConn);
-                            }
-                        }, 2000);
-                    });
-                }
+            for (const id of peerIds) {
+                connectToPeer(id);
+            }
+        }
+        function sendDirectly(connection, buffer) {
+            if (!connection || !connection.open) return;
+            try { connection.send(buffer); } catch(e) {}
+        }
+ 
+        function announceStateTo(connection) {
+            if (!connection || !connection.open) return;
+            const joinBuf = new ArrayBuffer(2);
+            const joinView = new DataView(joinBuf);
+            BinaryProtocol.writeUint8(joinView, 0, protocol.player_join);
+            BinaryProtocol.writeUint8(joinView, 1, clientId);
+            sendDirectly(connection, joinBuf);
+            const levelBuf = new ArrayBuffer(3);
+            const levelView = new DataView(levelBuf);
+            BinaryProtocol.writeUint8(levelView, 0, protocol.player_level);
+            BinaryProtocol.writeUint8(levelView, 1, clientId);
+            BinaryProtocol.writeUint8(levelView, 2, level.onLevel);
+            sendDirectly(connection, levelBuf);
+            sendFullTechSync(connection);
+            if (Math && Math.initialSeed) {
+                const seedStr = String(Math.initialSeed);
+                const encoded = new TextEncoder().encode(seedStr);
+                const seedBuf = new ArrayBuffer(2 + 2 + encoded.length);
+                const seedView = new DataView(seedBuf);
+                let offset = BinaryProtocol.writeUint8(seedView, 0, protocol.seed_sync);
+                offset = BinaryProtocol.writeUint8(seedView, offset, clientId);
+                offset = BinaryProtocol.writeString(seedView, offset, seedStr);
+                sendDirectly(connection, seedBuf);
+            } else {
+                const reqBuf = new ArrayBuffer(2);
+                const reqView = new DataView(reqBuf);
+                BinaryProtocol.writeUint8(reqView, 0, protocol.seed_request);
+                BinaryProtocol.writeUint8(reqView, 1, clientId);
+                sendDirectly(connection, reqBuf);
             }
         }
         function setupConnection(connection) {
-            if (connections.some(c => c.peer === connection.peer)) return;
+            pendingConnections.delete(connection.peer);
+            const existing = connections.find(c => c.peer === connection.peer);
+            if (existing) {
+                if (existing === connection) return;
+                existing.off("data");
+                existing.off("close");
+                existing.off("error");
+                connections = connections.filter(c => c !== existing);
+                connToSenders.delete(existing);
+            }
             connections.push(connection);
             connToSenders.set(connection, new Set());
             connection.on("data", (data) => {
@@ -1865,6 +1892,7 @@ function initP2P() {
                 }
             });
             connection.on("close", () => {
+                pendingConnections.delete(connection.peer);
                 const senders = connToSenders.get(connection) || new Set();
                 for (const id of senders) {
                     propagatePlayerLeave(id, connection);
@@ -1876,24 +1904,39 @@ function initP2P() {
                 broadcastPeerList();
             });
             connection.on("error", () => {
+                pendingConnections.delete(connection.peer);
                 connections = connections.filter(c => c !== connection);
                 updateConnectionStatus();
             });
-            ensureBidirectional(connection);   
-            broadcastPeerList();    
-            sendPlayerJoin();
-            sendPlayerLevel(level.onLevel);
-            sendFullTechSync(connection);
-
-            if (Math && Math.initialSeed) {
-                sendSeedSync(Math.initialSeed);
-            } else {
-                const buffer = new ArrayBuffer(2);
-                const view = new DataView(buffer);
-                BinaryProtocol.writeUint8(view, 0, protocol.seed_request);
-                BinaryProtocol.writeUint8(view, 1, clientId);
-                connection.send(buffer);
-            }
+            ensureBidirectional(connection);
+            updateConnectionStatus();
+            broadcastPeerList();
+            announceStateTo(connection);
+        }
+        function connectToPeer(targetId) {
+            if (targetId === peer.id) return;
+            if (connections.some(c => c.peer === targetId && c.open)) return;
+            if (pendingConnections.has(targetId)) return;
+            pendingConnections.add(targetId);
+            const conn = peer.connect(targetId);
+            conn.on("open", () => {
+                pendingConnections.delete(targetId);
+                setupConnection(conn);
+                broadcastPeerList();
+                const fullList = connections.filter(c => c.open).map(c => c.peer).concat(peer.id);
+                try { conn.send({ type: "peer-list", peers: fullList }); } catch(e) {}
+            });
+            conn.on("error", () => {
+                pendingConnections.delete(targetId);
+                setTimeout(() => {
+                    if (!connections.some(c => c.peer === targetId && c.open)) {
+                        connectToPeer(targetId);
+                    }
+                }, 2000);
+            });
+            setTimeout(() => {
+                pendingConnections.delete(targetId);
+            }, 15000);
         }
         function validateUsernames() {
             for (const id in remotePlayers) {
@@ -2108,7 +2151,14 @@ function initP2P() {
             monitorMeshHealth();
         })
         .onConnection((connection) => {
-            setupConnection(connection);
+            if (connection.open) {
+                setupConnection(connection);
+            } else {
+                connection.on("open", () => setupConnection(connection));
+                connection.on("error", () => {
+                    pendingConnections.delete(connection.peer);
+                });
+            }
         })
         .onError((err) => {
             if (err == "disconnected") {
