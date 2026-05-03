@@ -516,6 +516,35 @@ function initP2P() {
             </g>
         `;
         splash.insertAdjacentHTML('beforeend', textHTML);
+        const multiTitle = `
+            <g class="fade-in" transform="translate(325,375) scale(10)" fill="#afafaf" stroke="none">
+                <path transform="translate(-9.2,0)" d="M0 0 h1 v0.2 h3.7 l0.3 0.3 v2.6 h-1 v-1.7 h-1 v1.7 h-1 v-1.7 h-1 v1.7 h-1 z"></path>
+                <path transform="translate(-3.8,0)" d="M0 0 h1 v2 h1 v-2 h1 v2.8 l-0.3 0.3 h-2.4 l-0.3-0.3 z"></path>
+                <path transform="translate(-0.5,0)" d="M0 -1 h1 v4.1 h-1 z"></path>
+                <path transform="translate(0.8,0)" d="M0 0 h1 v-1 h1 v1 h1 v1 h-1 v2.1 h-1 v-2.1 h-1 z"></path>
+                <rect transform="translate(4.1,0)" width="1" height="3.1"></rect>
+                <path transform="translate(5.5,0)" d="M0 0 h1 v0.2 h1.5 l0.7 0.7 v1.5 l-0.7 0.7 h-1.5 v2 h-1 z"></path>
+                <path transform="translate(9,0)" d="M0 -1 h1 v4.1 h-1 z"></path>
+                <path transform="translate(11,0)" d="M0 0 h1.7 l0.7 0.7 v2.4 h-2.4 l-0.7 -0.7 v-1.7 l0.7 -0.7 z"></path>
+                <path transform="translate(14,0)" d="M0 0 h1 v2 h1 v-2 h1 v4.5 l-0.3 0.3 h-2.7 v-1 h2 v-0.7 h-1.7 l-0.3 -0.3 z"></path>
+                <path transform="translate(18.5,0)" d="M0 0 h1.7 l0.7 0.7 v1.7 l-0.7 0.7 h-1.7 v0.7 h2.3 v1 h-3 l-0.3 -0.3 v-3.3 z"></path>
+                <path transform="translate(21.4,0)" d="M0 0 h1 v0.5 l0.6 -0.5 h0.6 v1 h-0.6 l-0.6 0.6 v1.5 h-1 z"></path>
+            </g>
+            <g transform="translate(325,375) scale(10)" fill="none" stroke="#333" stroke-linejoin="round" stroke-linecap="round">
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(-9.2,0)" d="M0 0 h1 v0.2 h3.7 l0.3 0.3 v2.6 h-1 v-1.7 h-1 v1.7 h-1 v-1.7 h-1 v1.7 h-1 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(-3.8,0)" d="M0 0 h1 v2 h1 v-2 h1 v2.8 l-0.3 0.3 h-2.4 l-0.3-0.3 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(-0.5,0)" d="M0 -1 h1 v4.1 h-1 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(0.8,0)" d="M0 0 h1 v-1 h1 v1 h1 v1 h-1 v2.1 h-1 v-2.1 h-1 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(4.1,0)" d="M0 0 h1 v3.1 h-1 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(5.5,0)" d="M0 0 h1 v0.2 h1.5 l0.7 0.7 v1.5 l-0.7 0.7 h-1.5 v2 h-1 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(9,0)" d="M0 -1 h1 v4.1 h-1 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(11,0)" d="M0 0 h1.7 l0.7 0.7 v2.4 h-2.4 l-0.7 -0.7 v-1.7 l0.7 -0.7 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(14,0)" d="M0 0 h1 v2 h1 v-2 h1 v4.5 l-0.3 0.3 h-2.7 v-1 h2 v-0.7 h-1.7 l-0.3 -0.3 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(18.5,0)" d="M0 0 h1.7 l0.7 0.7 v1.7 l-0.7 0.7 h-1.7 v0.7 h2.3 v1 h-3 l-0.3 -0.3 v-3.3 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(21.4,0)" d="M0 0 h1 v0.5 l0.6 -0.5 h0.6 v1 h-0.6 l-0.6 0.6 v1.5 h-1 z"></path>
+            </g>
+        `;
+        splash.insertAdjacentHTML('beforeend', multiTitle);
 		const style = document.createElement("style");
 		style.textContent = `
             .status-connected {
@@ -589,8 +618,33 @@ function initP2P() {
                 border-bottom: 1px solid #444;
                 padding-bottom: 8px;
             }
+            .outer {
+                z-index: 999;
+                color: #555;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 20em;
+                height: 10em;
+                background-color: rgba(255, 255, 255, 0.5);
+                border-radius: 10px;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 10px;
+                overflow: auto;
+                margin: 1em;
+                font-family: monospace;
+                word-break: break-all;
+                font-size: 1.1em;
+            }
             `;
 		document.head.appendChild(style);
+        const outerChat = document.createElement("div");
+		outerChat.id = "outer-chat";
+        outerChat.classList.add("outer");
+        document.body.appendChild(outerChat);
+        outerChat.innerHTML += `press enter to open chat bar`;
 		const container = document.createElement("details");
 		container.id = "multiplayer-details";
 		container.innerHTML = `
@@ -862,7 +916,8 @@ function initP2P() {
             Composite.remove(engine.world, remotePlayers[id]);
             const idx = mob.findIndex(m => m.id === id);
             if (idx !== -1) mob.splice(idx, 1);
-            simulation.inGameConsole(`${remotePlayers[id].username} left the game`);
+            //simulation.inGameConsole(`${remotePlayers[id].username} left the game`);
+            outerChat.innerHTML += `<br>${remotePlayers[id].username} left the game`;
             delete remotePlayers[id];
         }
         function handleBinaryPacket(buffer, sourceConn) {
@@ -894,7 +949,8 @@ function initP2P() {
                     }
                     case protocol.chat_message: {
                         const [chat, offset1] = BinaryProtocol.readString(view, offset);
-                        simulation.inGameConsole(chat);
+                        outerChat.innerHTML += "<br>" + chat;
+                        //simulation.inGameConsole(chat);
                         break;
                     }
                     case protocol.player_username_request: {
@@ -2223,6 +2279,10 @@ function initP2P() {
         }
         const oldSimulation = simulation.startGame;
         simulation.startGame = () => {
+            outerChat.style.top = 'calc(100vh - 12em - 10px)';
+            outerChat.style.left = 'calc(100vw - 22em - 10px)';
+            outerChat.style.bottom = '0';
+            outerChat.style.right = '0';
             oldSimulation();
             for (const playerKey in remotePlayers) {
                 if (remotePlayers.hasOwnProperty(playerKey)) {
@@ -2243,6 +2303,16 @@ function initP2P() {
                     }
                 }
             })
+        }
+        const oldDeath = m.death;
+        m.death = function() {
+            oldDeath();
+            if(!m.alive) {
+                outerChat.style.top = '0';
+                outerChat.style.left = '0';
+                outerChat.style.bottom = '';
+                outerChat.style.right = '';
+            }
         }
         const oldNext = level.nextLevel;
         level.nextLevel = function() {
@@ -13786,7 +13856,8 @@ function initP2P() {
             const message = `${name}: ${text}`;
             sentChat(message);
             if (simulation && typeof simulation.inGameConsole === 'function') {
-                simulation.inGameConsole(message);
+                //simulation.inGameConsole(message);
+                outerChat.innerHTML += "<br>" + message;
             }
             closeChat();
         }
