@@ -527,7 +527,7 @@ function initP2P() {
                 <path transform="translate(9,0)" d="M0 -1 h1 v4.1 h-1 z"></path>
                 <path transform="translate(11,0)" d="M0 0 h1.7 l0.7 0.7 v2.4 h-2.4 l-0.7 -0.7 v-1.7 l0.7 -0.7 z"></path>
                 <path transform="translate(14,0)" d="M0 0 h1 v2 h1 v-2 h1 v4.5 l-0.3 0.3 h-2.7 v-1 h2 v-0.7 h-1.7 l-0.3 -0.3 z"></path>
-                <path transform="translate(18.5,0)" d="M0 0 h1.7 l0.7 0.7 v1.7 l-0.7 0.7 h-1.7 v0.7 h2.3 v1 h-3 l-0.3 -0.3 v-3.3 z"></path>
+                <path transform="translate(18.4,0)" d="M0 0 h1.7 l0.7 0.7 v1 h-1.9 v0.7 h1.9 l-0.7 0.7 h-1.7 l-0.7 -0.7 v-1.7 z"></path>
                 <path transform="translate(21.4,0)" d="M0 0 h1 v0.5 l0.6 -0.5 h0.6 v1 h-0.6 l-0.6 0.6 v1.5 h-1 z"></path>
             </g>
             <g transform="translate(325,375) scale(10)" fill="none" stroke="#333" stroke-linejoin="round" stroke-linecap="round">
@@ -540,7 +540,7 @@ function initP2P() {
                 <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(9,0)" d="M0 -1 h1 v4.1 h-1 z"></path>
                 <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(11,0)" d="M0 0 h1.7 l0.7 0.7 v2.4 h-2.4 l-0.7 -0.7 v-1.7 l0.7 -0.7 z"></path>
                 <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(14,0)" d="M0 0 h1 v2 h1 v-2 h1 v4.5 l-0.3 0.3 h-2.7 v-1 h2 v-0.7 h-1.7 l-0.3 -0.3 z"></path>
-                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(18.5,0)" d="M0 0 h1.7 l0.7 0.7 v1.7 l-0.7 0.7 h-1.7 v0.7 h2.3 v1 h-3 l-0.3 -0.3 v-3.3 z"></path>
+                <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(18.4,0)" d="M0 0 h1.7 l0.7 0.7 v1 h-1.9 v0.7 h1.9 l-0.7 0.7 h-1.7 l-0.7 -0.7 v-1.7 z"></path>
                 <path style="stroke-dasharray:25; stroke-dashoffset:25; animation:dash 2.5s ease-in forwards;" stroke-width="0.0875" transform="translate(21.4,0)" d="M0 0 h1 v0.5 l0.6 -0.5 h0.6 v1 h-0.6 l-0.6 0.6 v1.5 h-1 z"></path>
             </g>
         `;
