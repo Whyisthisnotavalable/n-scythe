@@ -5,11 +5,12 @@ if (typeof Peer === "undefined") {
         initP2P();
     };
     document.head.appendChild(peerScript);
-} else {
+} else if(!window.multiplayer) {
     initP2P();
 }
 function initP2P() {
 	(function () {
+        window.multiplayer = true;
         let onlinePlayers = new Map();
         const FIREBASE_CONFIG = {
             apiKey: "AIzaSyBYuLYTAycjGjMzdvDTrrEqLESSeAkqH2M",
