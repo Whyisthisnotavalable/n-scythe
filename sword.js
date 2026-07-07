@@ -7,6 +7,9 @@ javascript:(function() {
 		defaultAmmoPack: Infinity,
 		have: false,
 		cycle: 0,
+		cycle2: 0,
+		durability: 300,
+		maxDurability: 300,
 		sword: undefined,
 		swordArray: [],
 		bladeSegments: undefined,
@@ -24,7 +27,7 @@ javascript:(function() {
 		isSlowed: false,
 		technique: { 
 			active: false, 
-			phase: "idle", // idle, slowmo, input, resolve 
+			phase: "idle",
 			timer: 0, 
 			target: null, 
 			pattern: [], 
@@ -38,6 +41,21 @@ javascript:(function() {
 		shouldSlow: false,
 		fire() { },
 		do() {
+			if (this.cycle2 === 0) {
+				const oldAmmoEffect = powerUps.ammo.effect;
+				powerUps.ammo.effect = () => {
+					oldAmmoEffect();
+					for (let i = 0, len = b.inventory.length; i < len; ++i) {
+						if (b.guns[b.inventory[i]].name === "sword" && tech.durabilitySword) {
+							b.guns[b.inventory[i]].durability = Math.min(
+								b.guns[b.inventory[i]].maxDurability,
+								b.guns[b.inventory[i]].durability + 30
+							);
+						}
+					}
+				};
+			}
+			this.cycle2++;
 			if(tech.hartmanEffect) this.updateTechnique();
 			if(this.listen) {
 				window.addEventListener("keydown", this.keyListener.bind(this));
@@ -114,6 +132,15 @@ javascript:(function() {
 			}
 			this.blades();
 			this.collision();
+			if (tech.durabilitySword) {
+				this.durability = Math.max(0, Math.min(this.maxDurability, this.durability));
+				for (let i = 0, len = b.inventory.length; i < len; ++i) {
+					if (b.guns[b.inventory[i]].name === "sword") {
+						document.getElementById(b.inventory[i]).innerHTML =
+							`${b.guns[b.inventory[i]].name} - ${b.guns[b.inventory[i]].durability}/${b.guns[b.inventory[i]].maxDurability} <em style="font-size:0.85em;">durability</em>`;
+					}
+				}
+			}
 			if (this.technique.cutLine) {
 				const c = this.technique.cutLine;
 				ctx.globalCompositeOperation = "exclusion"
@@ -152,15 +179,17 @@ javascript:(function() {
 			}
 			if(this.sword) {
 				this.stabStatus = true;
-				if(tech.isEnergyHealth) {
-					m.energy -= 0.002;
-				} else {
-					m.health -= 0.00025;
-					m.displayHealth();
+				if(!tech.durabilitySword) {
+					if(tech.isEnergyHealth) {
+						m.energy -= 0.002;
+					} else {
+						m.health -= 0.00025;
+						m.displayHealth();
+					}
 				}
 			}
 			if (input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
-				if (!this.sword && b.guns[b.activeGun].name === 'sword') {
+				if (!this.sword && b.guns[b.activeGun].name === 'sword' && (!tech.durabilitySword || this.durability > 0)) {
 					if(tech.greatSword) {
 						({ sword: this.sword, bladeSegments: this.bladeSegments} = this.greatSword());
 					} else if(tech.longSword) {
@@ -193,7 +222,7 @@ javascript:(function() {
 				this.charge = 0;
 				this.released = false;
 			} else {
-				if (!this.isBroken && this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
+				if (!this.isBroken && this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11) && (!tech.durabilitySword || this.durability > 0)) {
 					if(tech.infinityEdge) {
 						const newSize = Math.sqrt(0.5 * m.health) + 1;
 						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), this.sword.position);
@@ -380,7 +409,7 @@ javascript:(function() {
 					m.fireCDcycle = 0;
 				}
 			}
-			if(input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
+			if(input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11) && !tech.durabilitySword) {
 				if(tech.isEnergyHealth) {
 					m.energy -= 0.004;
 				} else {
@@ -389,7 +418,7 @@ javascript:(function() {
 				}
 			}
 			if (input.fire && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
-				if (!this.sword && b.guns[b.activeGun].name === 'sword') {
+				if (!this.sword && b.guns[b.activeGun].name === 'sword' && (!tech.durabilitySword || this.durability > 0)) {
 					if(tech.greatSword) {
 						({ sword: this.sword, bladeSegments: this.bladeSegments} = this.greatSword());
 					} else if(tech.longSword) {
@@ -425,7 +454,7 @@ javascript:(function() {
 				this.bladeSegments = undefined;
 				m.fireCDcycle = m.cycle + 10;
 			} else {
-				if (this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11)) {
+				if (this.sword && (tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11) && (!tech.durabilitySword || this.durability > 0)) {
 					if(tech.infinityEdge) {
 						const newSize = Math.sqrt(0.5 * m.health) + 1;
 						Matter.Body.scale(this.sword, newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), newSize * (1 / (this.sword.scale == undefined ? 1 : this.sword.scale)), this.sword.position);
@@ -569,9 +598,6 @@ javascript:(function() {
 			const handleWidth = 20;
 			const handleHeight = 120;
 			const handle = Bodies.rectangle(x, y, handleWidth, handleHeight, spawn.propsIsNotHoldable);
-			// bullet[bullet.length] = handle;
-			// handle.customName = "handle";
-			// bullet[bullet.length - 1].do = () => {};
 			const pommelWidth = 30;
 			const pommelHeight = 40;
 			const pommelVertices = [
@@ -597,8 +623,6 @@ javascript:(function() {
 				{ x: x, y: y },
 			];
 			const leftOuter = Bodies.fromVertices(x + 15, y - handleHeight, leftOuterVertices, spawn.propsIsNotHoldable);
-			// bullet[bullet.length] = leftOuter;
-			// bullet[bullet.length - 1].do = () => {};
 			const rightOuterVertices = [
 				{ x: x, y: y - 95 },
 				{ x: x - 15, y: y - 120 },
@@ -835,7 +859,9 @@ javascript:(function() {
 							const b = eyeColor[3];
 							const color = `#${r}${r}${g}${g}${b}${b}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
 							ctx.fillStyle = color;
-						} else {
+						} else if(tech.durabilitySword) {
+							ctx.fillStyle = `#c0c0c0${Math.round(alpha * 255).toString(16).padStart(2, '0')}`
+						}else {
 							ctx.fillStyle = `rgba(220, 20, 60, ${alpha})`;
 						}
 						ctx.fill();
@@ -847,7 +873,7 @@ javascript:(function() {
 						ctx.beginPath();
 						ctx.lineJoin = "miter";
 						ctx.miterLimit = 100;
-						ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : tech.isAmmoSword ? "#c0c0c0" : "crimson";
+						ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : tech.durabilitySword ? "#c0c0c0" : "crimson";
 						ctx.lineWidth = 5;
 						ctx.fillStyle = "black";
 						ctx.moveTo(this.bladeSegments[i].vertices[0].x, this.bladeSegments[i].vertices[0].y);
@@ -1122,7 +1148,7 @@ javascript:(function() {
 					ctx.beginPath();
 					ctx.lineJoin = "miter";
 					ctx.miterLimit = 100;
-					ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : "crimson";
+					ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : tech.durabilitySword ? "#c0c0c0" : "crimson";;
 					ctx.lineWidth = 5;
 					ctx.fillStyle = "black";
 					ctx.moveTo(this.brokenParts[i].vertices[0].x, this.brokenParts[i].vertices[0].y);
@@ -1219,7 +1245,9 @@ javascript:(function() {
 							const b = eyeColor[3];
 							const color = `#${r}${r}${g}${g}${b}${b}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
 							ctx.fillStyle = color;
-						} else {
+						} else if(tech.durabilitySword) {
+							ctx.fillStyle = `#c0c0c0${Math.round(alpha * 255).toString(16).padStart(2, '0')}`
+						}else {
 							ctx.fillStyle = `rgba(220, 20, 60, ${alpha})`;
 						}
 						ctx.fill();
@@ -1249,7 +1277,7 @@ javascript:(function() {
 					ctx.beginPath();
 					ctx.lineJoin = "miter";
 					ctx.miterLimit = 100;
-					ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : "crimson";
+					ctx.strokeStyle = tech.isEnergyHealth ? m.fieldMeterColor : tech.durabilitySword ? "#c0c0c0" : "crimson";
 					ctx.lineWidth = 5;
         			ctx.moveTo(part.vertices[0].x - part.position.x, part.vertices[0].y - part.position.y);
 					for (let j = 1; j < part.vertices.length; j++) {
@@ -1289,6 +1317,7 @@ javascript:(function() {
 							}
 						}
 						mob[i].damage(dmg, true);
+						if (tech.durabilitySword) { this.durability--; }
 						simulation.drawList.push({
 							x: mob[i].position.x,
 							y: mob[i].position.y,
@@ -1697,9 +1726,9 @@ javascript:(function() {
 				if(!m2.alive) {
 					m2.leaveBody = false;
 					if(oldLeave && m2.mass > 1 && m2.radius > 18) {
-						let v = Matter.Vertices.hull(Matter.Vertices.clockwiseSort(m2.vertices)) //might help with vertex collision issue, not sure
-						if (v.length < 3) continue;
-						const cutPoint = 3 + Math.floor((v.length - 6) * Math.random()) //Math.floor(v.length / 2)
+						let v = Matter.Vertices.hull(Matter.Vertices.clockwiseSort(m2.vertices));
+						if (v.length < 4) continue;
+						const cutPoint = Math.max(2, Math.min(v.length - 2, 3 + Math.floor((v.length - 6) * Math.random())));
 						const v2 = v.slice(0, cutPoint + 1)
 						v = v.slice(cutPoint - 1)
 						const len = body.length;
@@ -1711,8 +1740,7 @@ javascript:(function() {
 						body[len].classType = "body";
 						body[len].frictionAir = 0.001
 						body[len].friction = 0.05
-						Composite.add(engine.world, body[len]); //add to world
-
+						Composite.add(engine.world, body[len]);
 						const len2 = body.length;
 						body[len2] = Matter.Bodies.fromVertices(m2.position.x, m2.position.y, v);
 						Matter.Body.setVelocity(body[len2], Vector.mult(m2.velocity, 0.5));
@@ -1722,8 +1750,7 @@ javascript:(function() {
 						body[len2].classType = "body";
 						body[len2].frictionAir = 0.001
 						body[len2].friction = 0.05
-						Composite.add(engine.world, body[len2]); //add to world
-						//large mobs shrink so they don't block paths
+						Composite.add(engine.world, body[len2]);
 						if (body[len].mass + body[len2].mass > 16) {
 							const massLimit = 8 + 6 * Math.random()
 							const shrink = function (that1, that2) {
@@ -1913,7 +1940,33 @@ javascript:(function() {
 			remove() {
 				tech.heavenlyArray = false;
 			}
-		},		
+		},
+		{
+			name: "work hardening",
+			descriptionFunction() {
+				return `sword now uses <b>ammo</b> instead of <strong class="color-h">health</strong><br><strong>+26%</strong> <strong class='color-junk'>JUNK</strong> to <strong class='color-m'>tech</strong> pool`
+			},
+			isGunTech: true,
+			maxCount: 1,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() {
+				return tech.haveGunCheck("sword");
+			},
+			requires: "sword",
+			effect() {
+				tech.durabilitySword = true;
+				this.refundAmount += tech.addJunkTechToPool(0.26);
+			},
+			remove() {
+				tech.durabilitySword = false;
+				if (this.count > 0 && this.refundAmount > 0) {
+					tech.removeJunkTechFromPool(this.refundAmount);
+					this.refundAmount = 0;
+				}
+			}
+		},
 		{
 			name: "hartman effect",
 			descriptionFunction() {
