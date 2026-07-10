@@ -475,6 +475,11 @@ function initP2P() {
             seed_sync: 0x3A,
             seed_request: 0x3B,
             block_claim: 0x3C,
+            
+            mob_create: 0x40,
+            mob_update: 0x41,
+            mob_death: 0x42,
+            mob_request_all: 0x43,
 
 			game_event: 0x50,
 			chat_message: 0x51,
@@ -757,11 +762,8 @@ function initP2P() {
         if (seedInput) {
             seedInput.addEventListener("input", debounce(() => {
                 const value = seedInput.value.trim();
-                if (value !== "" && !seedUpdateInProgress) {
-                    sendSeedSync(value);
-                } else {
-                    sendSeedSync(seedInput.placeholder || "");
-                }
+                const seed = value !== "" ? value : (seedInput.placeholder || "");
+                sendSeedSync(seed, true);
             }, 500));
         }
 		function updateStatus(text, statusClass) {
@@ -1040,7 +1042,7 @@ function initP2P() {
                             remotePlayers[senderId] = spawnPlayer(x, y, senderId);
                             safeRemoveAllTechForPlayer(senderId);
                             requestTechUpdate();
-                        } else if(remotePlayers[senderId] && alive && m.alive) {
+                        } else if(remotePlayers[senderId] && alive) {
                             if(mob.findIndex(m => m.id === senderId) == -1) {
                                 delete remotePlayers[senderId];
                             }
@@ -1050,6 +1052,7 @@ function initP2P() {
                                 Matter.Body.setPosition(remotePlayer, { x, y });
                             }
                             Matter.Body.setVelocity(remotePlayer, { x: velocityX, y: velocityY})
+                            remotePlayer.alive = alive;
                             remotePlayer.angle2 = rotation;
                             remotePlayer.gunType = gunType;
                             remotePlayer.mouse.x = mouseX;
@@ -1057,6 +1060,7 @@ function initP2P() {
                             remotePlayer.fieldMode = fieldMode;
                             remotePlayer.fireCDscale = fireRate;
                         } else {
+                            if (remotePlayers[senderId]) remotePlayers[senderId].alive = false;
                             return;
                         }
 						break;
@@ -1248,26 +1252,136 @@ function initP2P() {
                         }
                         break;
                     }
-
+                    case protocol.mob_create: {
+                        if (!remotePlayers[senderId]?.updateBlocks) break;
+                        const [typeName, off1] = BinaryProtocol.readString(view, offset);
+                        const [netId, off2] = BinaryProtocol.readString(view, off1);
+                        const [posX, off3] = BinaryProtocol.readFloat64(view, off2);
+                        const [posY, off4] = BinaryProtocol.readFloat64(view, off3);
+                        const [radius, off5] = BinaryProtocol.readFloat64(view, off4);
+                        const [fill, off6] = BinaryProtocol.readString(view, off5);
+                        if (!mob.some(m => m.netId === netId)) {
+                            let newMob = null;
+                            if (typeof spawn[typeName] === "function") {
+                                const beforeLen = mob.length;
+                                try {
+                                    currentSpawnFn = typeName;
+                                    spawn[typeName](posX, posY);
+                                    if (mob.length > beforeLen) newMob = mob[mob.length - 1];
+                                } catch (e) {
+                                    if (mob.length > beforeLen) mob.splice(beforeLen, mob.length - beforeLen);
+                                }
+                                currentSpawnFn = null;
+                            }
+                            if (newMob) {
+                                newMob.netId = netId;
+                                newMob._mobTypeName = typeName;
+                                newMob.remoteMob = true;
+                                if (radius && newMob.radius && Math.abs(radius - newMob.radius) > 0.5) {
+                                    const s = radius / newMob.radius;
+                                    Matter.Body.scale(newMob, s, s);
+                                    newMob.radius = radius;
+                                }
+                                if (fill) newMob.fill = fill;
+                                makePuppetMob(newMob);
+                            } else {
+                                mobs.spawn(posX, posY, 8, radius || 20, fill || "#000");
+                                const fallbackMob = mob[mob.length - 1];
+                                if (fallbackMob) {
+                                    fallbackMob.netId = netId;
+                                    fallbackMob._mobTypeName = typeName;
+                                    fallbackMob.remoteMob = true;
+                                    fallbackMob.isDropPowerUp = false;
+                                    fallbackMob.do = function() {
+                                        this.checkStatus();
+                                        ctx.beginPath();
+                                        ctx.arc(this.position.x, this.position.y, this.radius, 0, 2 * Math.PI);
+                                        ctx.fillStyle = this.fill;
+                                        ctx.fill();
+                                        ctx.strokeStyle = this.stroke || "#000";
+                                        ctx.stroke();
+                                    };
+                                    makePuppetMob(fallbackMob);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    case protocol.mob_update: {
+                        if (!remotePlayers[senderId]?.updateBlocks) break;
+                        const [netId, off1] = BinaryProtocol.readString(view, offset);
+                        const [posX, off2] = BinaryProtocol.readFloat64(view, off1);
+                        const [posY, off3] = BinaryProtocol.readFloat64(view, off2);
+                        const [velX, off4] = BinaryProtocol.readFloat64(view, off3);
+                        const [velY, off5] = BinaryProtocol.readFloat64(view, off4);
+                        const [angle, off6] = BinaryProtocol.readFloat64(view, off5);
+                        const [health, off7] = BinaryProtocol.readFloat64(view, off6);
+                        const [spX, off8] = BinaryProtocol.readFloat64(view, off7);
+                        const [spY, off9] = BinaryProtocol.readFloat64(view, off8);
+                        const [seesPlayer, off10] = BinaryProtocol.readBoolean(view, off9);
+                        const target = mob.find(m => m.netId === netId);
+                        if (target && target.alive) {
+                            if (target._netTarget) target._prevNetTarget = target._netTarget;
+                            target._netTarget = {
+                                x: posX, y: posY,
+                                velX, velY,
+                                angle,
+                                spX, spY,
+                                receivedAt: performance.now()
+                            };
+                            target.health = health;
+                            target.seePlayer.position.x = spX;
+                            target.seePlayer.position.y = spY;
+                            target.seePlayer.yes = seesPlayer;
+                            target.seePlayer.recall = seesPlayer ? (target.memory || 300) : 0;
+                        }
+                        break;
+                    }
+                    case protocol.mob_death: {
+                        const [netId, off1] = BinaryProtocol.readString(view, offset);
+                        const target = mob.find(m => m.netId === netId);
+                        if (target && target.alive) {
+                            target.leaveBody = false;
+                            target.isDropPowerUp = false;
+                            target.alive = false;
+                        }
+                        break;
+                    }
+                    case protocol.mob_request_all: {
+                        if (senderId === clientId) break;
+                        const [requestedLevel, off1] = BinaryProtocol.readUint8(view, offset);
+                        if (window.isLevelAuthority && requestedLevel === level.onLevel) {
+                            const connection = connections.find(c => {
+                                if (!c.open) return false;
+                                const senders = connToSenders.get(c);
+                                return senders && senders.has(senderId);
+                            });
+                            if (connection) sendAllMobs(connection);
+                        }
+                        break;
+                    }
                     case protocol.seed_sync: {
                         const [seed, offset1] = BinaryProtocol.readString(view, offset);
-                        if (senderId === clientId || seedUpdateInProgress) {
-                            break;
-                        }
+                        if (senderId === clientId) break;
+                        const isManual = view.getUint8(offset1) === 1;
+                        if (!isManual && senderId < clientId) break;
                         const seedInput = document.getElementById("seed");
-                        if (seedInput && seedInput.value !== seed) {
-                            seedUpdateInProgress = true;
-                            seedInput.value = seed;
-                            Math.initialSeed = seed;
-                            setTimeout(() => {
-                                seedUpdateInProgress = false;
-                            }, 100);
-                        }
-
+                        if (seedInput) seedInput.value = seed;
+                        Math.initialSeed = seed;
+                        Math.seed = Math.abs(Math.hash(seed));
+                        console.log(`[seed] synced to ${seed}, Math.seed=${Math.seed}`);
                         break;
                     }
                     case protocol.seed_request: {
-                        sendSeedSync(Math.initialSeed)
+                        const seedToSend = String(Math.initialSeed || document.getElementById("seed")?.value || "0");
+                        const enc = new TextEncoder().encode(seedToSend);
+                        const buf = new ArrayBuffer(2 + 2 + enc.length);
+                        const v = new DataView(buf);
+                        let off = BinaryProtocol.writeUint8(v, 0, protocol.seed_sync);
+                        off = BinaryProtocol.writeUint8(v, off, clientId);
+                        off = BinaryProtocol.writeUint16(v, off, enc.length);
+                        new Uint8Array(buf, off).set(enc);
+                        if (sourceConn && sourceConn.open) sourceConn.send(buf);
                         break;
                     }
                     case protocol.player_leave: {
@@ -1596,6 +1710,107 @@ function initP2P() {
             offset = BinaryProtocol.writeString(view, offset, block.id);
             sendBlockData(buffer);
         }
+                function sendMobCreate(mobObj, typeName) {
+            if (!typeName || !mobObj || !mobObj.netId) return;
+            const typeEnc = new TextEncoder().encode(typeName);
+            const idEnc = new TextEncoder().encode(mobObj.netId);
+            const fillEnc = new TextEncoder().encode(mobObj.fill || "#000");
+            const buf = new ArrayBuffer(
+                1 + 1 +
+                2 + typeEnc.length +
+                2 + idEnc.length +
+                8 + 8 +
+                8 +
+                2 + fillEnc.length
+            );
+            const view = new DataView(buf);
+            let off = BinaryProtocol.writeUint8(view, 0, protocol.mob_create);
+            off = BinaryProtocol.writeUint8(view, off, clientId);
+            off = BinaryProtocol.writeString(view, off, typeName);
+            off = BinaryProtocol.writeString(view, off, mobObj.netId);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.position.x);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.position.y);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.radius || 20);
+            off = BinaryProtocol.writeString(view, off, mobObj.fill || "#000");
+            sendBlockData(buf);
+        }
+        function sendMobUpdate(mobObj) {
+            if (!mobObj || !mobObj.netId || !mobObj.alive) return;
+            const idEnc = new TextEncoder().encode(mobObj.netId);
+            const buf = new ArrayBuffer(
+                1 + 1 +
+                2 + idEnc.length +
+                8 * 6 +
+                8 * 2 +
+                1
+            );
+            const view = new DataView(buf);
+            let off = BinaryProtocol.writeUint8(view, 0, protocol.mob_update);
+            off = BinaryProtocol.writeUint8(view, off, clientId);
+            off = BinaryProtocol.writeString(view, off, mobObj.netId);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.position.x);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.position.y);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.velocity.x);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.velocity.y);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.angle);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.health);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.seePlayer.position.x);
+            off = BinaryProtocol.writeFloat64(view, off, mobObj.seePlayer.position.y);
+            off = BinaryProtocol.writeBoolean(view, off, !!(mobObj.seePlayer.recall > 0));
+            sendBlockData(buf);
+        }
+        function sendMobDeath(netId) {
+            const enc = new TextEncoder().encode(netId);
+            const buf = new ArrayBuffer(1 + 1 + 2 + enc.length);
+            const view = new DataView(buf);
+            let off = BinaryProtocol.writeUint8(view, 0, protocol.mob_death);
+            off = BinaryProtocol.writeUint8(view, off, clientId);
+            off = BinaryProtocol.writeString(view, off, netId);
+            sendBlockData(buf);
+        }
+        function sendAllMobs(connection) {
+            if (!connection || !connection.open) return;
+            const aliveMobs = mob.filter(m => m && m.alive && m.netId && m._mobTypeName && !isRemotePlayerBody(m));
+            for (const mobObj of aliveMobs) {
+                const typeEnc = new TextEncoder().encode(mobObj._mobTypeName);
+                const idEnc = new TextEncoder().encode(mobObj.netId);
+                const fillEnc = new TextEncoder().encode(mobObj.fill || "#000");
+                const buf = new ArrayBuffer(
+                    1 + 1 +
+                    2 + typeEnc.length +
+                    2 + idEnc.length +
+                    8 + 8 +
+                    8 +
+                    2 + fillEnc.length
+                );
+                const view = new DataView(buf);
+                let off = BinaryProtocol.writeUint8(view, 0, protocol.mob_create);
+                off = BinaryProtocol.writeUint8(view, off, clientId);
+                off = BinaryProtocol.writeString(view, off, mobObj._mobTypeName);
+                off = BinaryProtocol.writeString(view, off, mobObj.netId);
+                off = BinaryProtocol.writeFloat64(view, off, mobObj.position.x);
+                off = BinaryProtocol.writeFloat64(view, off, mobObj.position.y);
+                off = BinaryProtocol.writeFloat64(view, off, mobObj.radius || 20);
+                off = BinaryProtocol.writeString(view, off, mobObj.fill || "#000");
+                try { connection.send(buf); } catch(e) {}
+            }
+        }
+        function requestAllMobs(retriesLeft = 3) {
+            const requestedLevel = level.onLevel;
+            const buf = new ArrayBuffer(3);
+            const view = new DataView(buf);
+            let off = BinaryProtocol.writeUint8(view, 0, protocol.mob_request_all);
+            off = BinaryProtocol.writeUint8(view, off, clientId);
+            off = BinaryProtocol.writeUint8(view, off, requestedLevel);
+            sendData(buf);
+            if (retriesLeft > 0) {
+                setTimeout(() => {
+                    if (level.onLevel === requestedLevel && mob.filter(m => m.netId).length === 0) {
+                        requestAllMobs(retriesLeft - 1);
+                    }
+                }, 1000);
+            }
+        }
         const _compositeRemove = Composite.remove;
         Composite.remove = function(world, b, deep) {
             if (world === engine.world && b && b.id && !b.remoteBlock && !b._p2pRemoveSent) {
@@ -1789,6 +2004,7 @@ function initP2P() {
             }
         }
         const skinHooks = {};
+        window.lastUsedSkin = "defaultDraw";
         for (const [name, fn] of Object.entries(m.skin)) {
             skinHooks[name] = fn;
             m.skin[name] = function(...args) {
@@ -1833,25 +2049,25 @@ function initP2P() {
                 sendData(buffer);
             }
         }
-        function sendSeedSync(seed) {
+        function sendSeedSync(seed, manual = false) {
             if (typeof seed !== "string") seed = String(seed);
             if (seedUpdateInProgress || (Date.now() - lastSeedUpdateTime < seedUpdateCD)) {
                 return;
             }
             const seedInput = document.getElementById("seed");
-            if (seedInput && seedInput.value !== seed) {
-                seedInput.value = seed;
-            }
+            if (seedInput && seedInput.value !== seed) seedInput.value = seed;
+            Math.initialSeed = seed;
+            Math.seed = Math.abs(Math.hash(seed));
             const encoder = new TextEncoder();
             const encoded = encoder.encode(seed);
-            const buffer = new ArrayBuffer(2 + 2 + encoded.length);
+            const buffer = new ArrayBuffer(2 + 2 + encoded.length + 1);
             const view = new DataView(buffer);
             let offset = BinaryProtocol.writeUint8(view, 0, protocol.seed_sync);
             offset = BinaryProtocol.writeUint8(view, offset, clientId);
-            offset = BinaryProtocol.writeUint16(view, offset, encoded.length);
-
-            new Uint8Array(buffer, offset).set(encoded);
+            offset = BinaryProtocol.writeString(view, offset, seed);
+            offset = BinaryProtocol.writeUint8(view, offset, manual ? 1 : 0);
             sendData(buffer);
+            lastSeedUpdateTime = Date.now();
         }
         function debounce(func, wait) {
             let timeout;
@@ -1896,7 +2112,6 @@ function initP2P() {
             if (!connection || !connection.open) return;
             try { connection.send(buffer); } catch(e) {}
         }
- 
         function announceStateTo(connection) {
             if (!connection || !connection.open) return;
             const joinBuf = new ArrayBuffer(2);
@@ -1911,22 +2126,21 @@ function initP2P() {
             BinaryProtocol.writeUint8(levelView, 2, level.onLevel);
             sendDirectly(connection, levelBuf);
             sendFullTechSync(connection);
-            if (Math && Math.initialSeed) {
-                const seedStr = String(Math.initialSeed);
-                const encoded = new TextEncoder().encode(seedStr);
-                const seedBuf = new ArrayBuffer(2 + 2 + encoded.length);
-                const seedView = new DataView(seedBuf);
-                let offset = BinaryProtocol.writeUint8(seedView, 0, protocol.seed_sync);
-                offset = BinaryProtocol.writeUint8(seedView, offset, clientId);
-                offset = BinaryProtocol.writeString(seedView, offset, seedStr);
-                sendDirectly(connection, seedBuf);
-            } else {
-                const reqBuf = new ArrayBuffer(2);
-                const reqView = new DataView(reqBuf);
-                BinaryProtocol.writeUint8(reqView, 0, protocol.seed_request);
-                BinaryProtocol.writeUint8(reqView, 1, clientId);
-                sendDirectly(connection, reqBuf);
-            }
+            const seedInput = document.getElementById("seed");
+            const seedStr = String(
+                Math.initialSeed ||
+                (seedInput && seedInput.value) ||
+                (seedInput && seedInput.placeholder) ||
+                "0"
+            );
+            const encoded = new TextEncoder().encode(seedStr);
+            const seedBuf = new ArrayBuffer(3 + 2 + encoded.length);
+            const seedView = new DataView(seedBuf);
+            let seedOffset = BinaryProtocol.writeUint8(seedView, 0, protocol.seed_sync);
+            seedOffset = BinaryProtocol.writeUint8(seedView, seedOffset, clientId);
+            seedOffset = BinaryProtocol.writeString(seedView, seedOffset, seedStr);
+            seedOffset = BinaryProtocol.writeUint8(seedView, seedOffset, 0);
+            sendDirectly(connection, seedBuf);
         }
         function setupConnection(connection) {
             pendingConnections.delete(connection.peer);
@@ -2091,7 +2305,7 @@ function initP2P() {
                 if (player && player.position) {
                     if(oldUsername != username) {
                         sendUsernameUpdate();
-                        b2.oldUsername = username;
+                        window.oldUsername = username;
                     }
                     let vel = clampVelocity(player.velocity);
                     sendPlayerMovement(
@@ -2101,7 +2315,7 @@ function initP2P() {
                         vel.y || 0,
                         m.angle || 0,
                         m.alive,
-                        b.activeGun,
+                        m.gunType,
                         simulation.mouseInGame.x || 0,
                         simulation.mouseInGame.y || 0,
                         m.fieldMode,
@@ -2115,7 +2329,7 @@ function initP2P() {
                         0,
                         0,
                         m.alive,
-                        b.activeGun,
+                        m.gunType,
                         0,
                         0,
                         m.fieldMode,
@@ -2154,6 +2368,7 @@ function initP2P() {
                 if(m.fieldMode == 4) {
                     sendMode();
                 }
+                sendSkin(window.lastUsedSkin);
                 const now = Date.now()
                 for (const b of body) {
                     if (!b || b.remoteBlock) continue;
@@ -2279,12 +2494,12 @@ function initP2P() {
             remotePlayers[id].tech.junkChance = 0;
         }
         const oldSimulation = simulation.startGame;
-        simulation.startGame = () => {
+        simulation.startGame = (isBuildRun = false, isTrainingRun = false) => {
             outerChat.style.top = 'calc(100vh - 12em - 10px)';
             outerChat.style.left = 'calc(100vw - 22em - 10px)';
             outerChat.style.bottom = '0';
             outerChat.style.right = '0';
-            oldSimulation();
+            oldSimulation(isBuildRun, isTrainingRun);
             for (const playerKey in remotePlayers) {
                 if (remotePlayers.hasOwnProperty(playerKey)) {
                     delete remotePlayers[playerKey];
@@ -2293,7 +2508,6 @@ function initP2P() {
             buildSafeRemoveFns();
             requestTechUpdate();
             validateUsernames();
-
             simulation.ephemera.push({
                 name: "personal best", //20.19
                 do() {
@@ -2347,9 +2561,202 @@ function initP2P() {
                 }
                 body = body.filter(b => b.remoteBlock || b.isNotHoldable);
                 setTimeout(() => requestAllBlocks(), 250);
+                const toWipe2 = mob.filter(b => !b.remoteMob);
+                for (const m of toWipe2) {
+                    m._p2pRemoveSent = true;
+                    Composite.remove(engine.world, m);
+                }
+                mob = mob.filter(m => m.remoteMob);
+                setTimeout(() => requestAllMobs(), 250);
             }
         };
         setTimeout(validateUsernames, 10)
+        let _nextMobId = 1;
+        const mobUpdateInterval = 100;
+        function isRemotePlayerBody(mobObj) {
+            return mobObj != null && (remotePlayers[mobObj.id] === mobObj || mobObj.isnotamob === true);
+        }
+        function getNearestPlayerPosition(mobObj) {
+            let bestDist = Infinity;
+            let bestPos = null;
+            const range2 = mobObj.alertRange2 || Infinity;
+            if (player && player.position && m.alive && !m.isCloak) {
+                const dx = player.position.x - mobObj.position.x;
+                const dy = player.position.y - mobObj.position.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bestDist && d2 < range2 && Matter.Query.ray(map, mobObj.position, player.position).length === 0) {
+                    bestDist = d2; bestPos = { x: player.position.x, y: player.position.y };
+                }
+            }
+            for (const id in remotePlayers) {
+                const rp = remotePlayers[id];
+                if (!rp || !rp.position || rp.isCloak) continue;
+                const dx = rp.position.x - mobObj.position.x;
+                const dy = rp.position.y - mobObj.position.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bestDist && d2 < range2 && Matter.Query.ray(map, mobObj.position, rp.position).length === 0) {
+                    bestDist = d2; bestPos = { x: rp.position.x, y: rp.position.y };
+                }
+            }
+            return bestPos;
+        }
+        function makePuppetMob(mobObj) {
+            const noop = function() {};
+            mobObj.locatePlayer = noop;
+            mobObj.seePlayerCheck = noop;
+            mobObj.seePlayerByLookingAt  = noop;
+            mobObj.seePlayerByHistory = noop;
+            mobObj.seePlayerCheckByDistance = noop;
+            mobObj.seePlayerByDistOrLOS  = noop;
+            mobObj.alwaysSeePlayer = noop;
+            mobObj.alertNearByMobs = noop;
+            mobObj.attraction = noop;
+            mobObj.repulsion  = noop;
+            mobObj.gravity = noop;
+            const origDo = mobObj.do;
+            mobObj.do = function() {
+                origDo.call(this);
+                const t = this._netTarget;
+                const prev = this._prevNetTarget;
+                if (!t) return;
+                let x, y, angle;
+                if (prev && t.receivedAt > prev.receivedAt) {
+                    const renderTime = performance.now() - 100;
+                    const interval = t.receivedAt - prev.receivedAt;
+                    const age = performance.now() - prev.receivedAt;
+                    const alpha = Math.max(0, Math.min((renderTime - prev.receivedAt) / interval, 1));
+                    if (alpha <= 1) {
+                        const a = alpha * alpha * (3 - 2 * alpha);
+                        x = prev.x + (t.x - prev.x) * a;
+                        y = prev.y + (t.y - prev.y) * a;
+                        angle = prev.angle + (t.angle - prev.angle) * a;
+                    } else {
+                        const extraAge = (performance.now() - t.receivedAt) / 1000;
+                        x = t.x + t.velX * extraAge;
+                        y = t.y + t.velY * extraAge;
+                        angle = t.angle;
+                    }
+                } else {
+                    const age = (performance.now() - t.receivedAt) / 1000;
+                    x = t.x + t.velX * age;
+                    y = t.y + t.velY * age;
+                    angle = t.angle;
+                }
+                Matter.Body.setPosition(this, { x, y });
+                Matter.Body.setVelocity(this, { x: t.velX, y: t.velY });
+                if (angle !== undefined) Matter.Body.setAngle(this, angle);
+                if (this.seePlayer && t.spX !== undefined) {
+                    this.seePlayer.position.x = t.spX;
+                    this.seePlayer.position.y = t.spY;
+                }
+            };
+        }
+        (function wrapSpawnFunctions() {
+            const skipKeys = new Set([
+                'pickList', 'fullPickList', 'tier', 'bossTier', 'bossTierIndex',
+                'randomBossList', 'mobDmgDoneByTier', 'mobDmgTakenByTier',
+                'mobTypeSpawnOrder', 'mobTierSpawnOrder', 'mobTypeSpawnIndex',
+                'dmgToPlayerByLevelsCleared', 'mobDmgTakenByLevelsCleared',
+                'setMobTypeSpawnOrder', 'setSpawnList', 'randomizeSpawnList',
+                'mapRect', 'mapVertex', 'bodyRect', 'bodyVertex',
+                'mapRectNow', 'mapVertexNow', 'bodyRectCorner',
+                'spawnBuilding', 'spawnStairs', 'debris', 'addResearchToLevel',
+                'propsFriction', 'propsFrictionMedium', 'propsBouncy', 'propsSlide',
+                'propsLight', 'propsOverBouncy', 'propsHeavy', 'propsIsNotHoldable',
+                'propsNoRotation', 'propsHoist', 'propsDoor', 'sandPaper',
+            ]);
+            for (const key of Object.keys(spawn)) {
+                if (typeof spawn[key] !== 'function') continue;
+                if (skipKeys.has(key)) continue;
+                const orig = spawn[key];
+                spawn[key] = function(...args) {
+                    const before = new Set(mob);
+                    const result = orig.apply(this, args);
+                    if (window.isLevelAuthority) {
+                        for (const mobObj of mob) {
+                            if (mobObj && !before.has(mobObj) && !mobObj.netId && !isRemotePlayerBody(mobObj)) {
+                                if (!mobObj._mobTypeName) mobObj._mobTypeName = key;
+                                if (!window.isSpawningLevelBlocks) {
+                                    mobObj.netId = `mob_${level.onLevel}_${_nextMobId++}`;
+                                    mobObj.remoteMob = false;
+                                    sendMobCreate(mobObj, key);
+                                }
+                            }
+                        }
+                    }
+                    return result;
+                };
+            }
+        })();
+        const _mobLevelStart = level.start;
+        level.start = function() {
+            _nextMobId = 1;
+            _mobLevelStart.call(this);
+            if (window.isLevelAuthority) {
+                for (const mobObj of mob) {
+                    if (!mobObj.netId && !isRemotePlayerBody(mobObj)) {
+                        mobObj.netId = `mob_${level.onLevel}_${_nextMobId++}`;
+                        if (!mobObj._mobTypeName) mobObj._mobTypeName = 'starter';
+                        mobObj.remoteMob = false;
+                    }
+                }
+                if (connections.some(c => c.open)) {
+                    for (const mobObj of mob) {
+                        if (!isRemotePlayerBody(mobObj)) sendMobCreate(mobObj, mobObj._mobTypeName);
+                    }
+                }
+            }
+        };
+        const _origMobsLoop = mobs.loop;
+        mobs.loop = function() {
+            const hasConnections = connections.some(c => c.open);
+            const hasRemote = hasConnections && Object.keys(remotePlayers).length > 0;
+            if (window.isLevelAuthority) {
+                if (hasRemote) {
+                    for (const mobObj of mob) {
+                        if (!mobObj.alive || !mobObj.seePlayer || isRemotePlayerBody(mobObj)) continue;
+                        const nearest = getNearestPlayerPosition(mobObj);
+                        if (!nearest) continue;
+                        mobObj.seePlayer.position.x = nearest.x;
+                        mobObj.seePlayer.position.y = nearest.y;
+                        mobObj.seePlayer.yes = true;
+                        if (typeof mobObj.seePlayer.recall === 'number') {
+                            mobObj.seePlayer.recall = Math.max(mobObj.seePlayer.recall, 30);
+                        }
+                    }
+                }
+                const preNetIds = hasConnections
+                    ? new Set(mob.filter(mo => mo.netId && mo.alive && !isRemotePlayerBody(mo)).map(mo => mo.netId))
+                    : null;
+                _origMobsLoop.call(this);
+                if (hasConnections) {
+                    if (preNetIds) {
+                        const postNetIds = new Set(mob.filter(mo => mo.netId && !isRemotePlayerBody(mo)).map(mo => mo.netId));
+                        for (const netId of preNetIds) {
+                            if (!postNetIds.has(netId)) sendMobDeath(netId);
+                        }
+                    }
+                    if (hasRemote) {
+                        for (const mobObj of mob) {
+                            if (!mobObj.alive || !mobObj.seePlayer || isRemotePlayerBody(mobObj)) continue;
+                            const nearest = getNearestPlayerPosition(mobObj);
+                            if (!nearest) continue;
+                            mobObj.seePlayer.position.x = nearest.x;
+                            mobObj.seePlayer.position.y = nearest.y;
+                        }
+                    }
+                }
+            } else {
+                _origMobsLoop.call(this);
+            }
+        };
+        setInterval(() => {
+            if (!window.isLevelAuthority) return;
+            if (!connections.some(c => c.open)) return;
+            for (const mobObj of mob) {
+                if (mobObj && mobObj.alive && mobObj.netId && !isRemotePlayerBody(mobObj)) sendMobUpdate(mobObj);
+            }
+        }, mobUpdateInterval);
         function pm(obj, methodName, replacements) {
             if (typeof obj[methodName] !== "function") {
                 throw new Error(`${methodName} is not a function`);
@@ -5231,6 +5638,13 @@ function initP2P() {
 			Body.setParts(me, [mobBody, mobHead, jumpSensor, headSensor]);
 			me.id = id;
             me.username = "unnamed player";
+            me.isnotamob = true;
+            me.alive = true; //Body.setParts doesn't propagate the parts' own 'alive: true' up to the
+            //parent compound body, so without this, me.alive is undefined until the first movement packet
+            //arrives - and even then only gets set inside the "alive" branch, so it's undefined right at spawn
+            me.isDropPowerUp = false; //this body started life as a template mob (see mobs.spawn() above) and inherits mob defaults;
+            //base game mob behaviors (shield auras, powerup drops, etc.) only check flags like this, not isnotamob,
+            //so without this a remote player can get treated as a regular mob and e.g. have a shield attached to them
 			me.inertia = Infinity;
             me.mob = true;
 			me.friction = 0.002;
