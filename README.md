@@ -2,15 +2,34 @@
 
 <img src="https://github.com/user-attachments/assets/7a53a96d-b038-4f01-934b-27d54968621d" alt="n-scythe logo" width="150" style="border-radius:8px;display:block;margin:0 auto">  
 
-## Warning
+### Multiplayer
+---
 The multiplayer mod is currently **semi-working** and **not fully polished**.<br>
+<details>
+<summary>What are synced?</summary>
+  
+- [x] Skins
+- [x] Mobs
+- [x] Guns
+- [x] Tech
+- [x] Names
+- [x] Chat
+- [x] Fields
+- [x] Blocks
+- [ ] Powerups
+- [ ] Community maps
+- [ ] Bots
+</details>
+
 Weapon mods are **not compatible** with the multiplayer mod.<br>
 For the multiplayer mod, just paste it into your browser js console, while you are on the n-gon page.<br>
 Alternatively, you can run this bookmarklet, which does the same thing:
 ```javascript
 javascript:var r=new XMLHttpRequest();r.open("GET",'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/multiplayer.js',true);r.onloadend=function(oEvent){new Function(r.responseText)();};r.send();
 ```
+You can also just visit [this website](https://whyisthisnotavalable.github.io/n-gon-multiplayer) if you can't figure out how to install the mod.
 
+---
 ### Install
 Run this bookmarklet while on n-gon to load weapon mods:  
 
