@@ -4,7 +4,8 @@
 
 ### Multiplayer
 ---
-The multiplayer mod is currently **semi-working** and **not fully polished**.<br>
+The multiplayer mod is currently **semi-working**.<br>
+It's good enough if you want to play with friends.<br>
 <details>
 <summary>What are synced?</summary>
   
@@ -27,7 +28,9 @@ Alternatively, you can run this bookmarklet, which does the same thing:
 ```javascript
 javascript:var r=new XMLHttpRequest();r.open("GET",'https://raw.githubusercontent.com/Whyisthisnotavalable/n-scythe/main/multiplayer.js',true);r.onloadend=function(oEvent){new Function(r.responseText)();};r.send();
 ```
-You can also just visit [this website](https://whyisthisnotavalable.github.io/n-gon-multiplayer) if you can't figure out how to install the mod.
+You can also just visit [this website](https://whyisthisnotavalable.github.io/n-gon-multiplayer) if you can't figure out how to install the mod, or if you want a working version.<br>
+I'm don't think I'm going to update this ever again, because landgreen added a lot of new stuff.<br>
+The last versions that should work with this mod without that fields or guns being unsynced are probably around early August 2026.
 
 ---
 ### Install
