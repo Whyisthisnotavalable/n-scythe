@@ -2,6 +2,9 @@ javascript:(function() {
 	const e = {
 		name: "tachyonic field",
 		description: `use <b class="color-f">energy</b> to gain a <b>burst</b> of <b>speed</b><br>multiply <b>momentum</b> <b>exponentially</b><br>16 <b class="color-f">energy</b> per second<em style ="float: right; font-family: monospace;font-size:1rem;color:#fff;">←↑↓→↑↓</em>`,
+		descriptionFunction() {
+			return `use <b class="color-f">energy</b> to gain a <b>burst</b> of <b>speed</b><br>multiply <b>momentum</b> <b>exponentially</b><br>16 <b class="color-f">energy</b> per second<em style ="float: right; font-family: monospace;font-size:1rem;color:#fff;">←↑↓→↑↓</em>`;
+		},
 		canMove: false,
 		haveEphemera: false,
 		keyLog: [null, null, null, null, null, null],
