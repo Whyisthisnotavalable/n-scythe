@@ -14,6 +14,10 @@ javascript:(function() {
 		swordArray: [],
 		bladeSegments: undefined,
 		bladeTrails: [],
+        twinSword: undefined,
+        twinConstraint: undefined,
+        twinSegments: undefined,
+        twinTrails: [],
 		angle: 0,
 		constraint: undefined,
 		charge: 0,
@@ -39,6 +43,15 @@ javascript:(function() {
 		comboWindow: 35,
 		listen: true,
 		shouldSlow: false,
+        satellites: [],
+        satCycle: 0,
+        satTurn: 0,
+        satAtkCD: 0,
+        satPX: undefined,
+        satPY: undefined,
+        zenith: [],
+        zenCycle: 0,
+        zenSpawnCD: 0,
 		fire() { },
 		do() {
 			if (this.cycle2 === 0) {
@@ -69,6 +82,8 @@ javascript:(function() {
 						if(b.guns[b.activeGun].name !== 'sword') {
 							for (let i = 0, len = b.inventory.length; i < len; ++i) {
 								if(b.guns[b.inventory[i]].name === "sword" && b.guns[b.inventory[i]].sword) {
+                                    if (b.guns[b.inventory[i]].name === "sword") b.guns[b.inventory[i]].removeTwin();
+                                    if (b.guns[b.inventory[i]].name === "sword") b.guns[b.inventory[i]].clearZenith();
 									b.guns[b.inventory[i]].cycle = 0;
 									if(b.guns[b.inventory[i]].constraint1) {
 										Composite.remove(engine.world, b.guns[b.inventory[i]].constraint1);
@@ -92,7 +107,7 @@ javascript:(function() {
 							}
 						}
 						if(b.guns[b.activeGun].name == 'sword' && tech.greatSword && b.guns[b.activeGun].sword) {
-							let bladeSegments = b.guns[b.activeGun].bladeSegments;
+							let bladeSegments = b.guns[b.activeGun].bladeSegments.concat(b.guns[b.activeGun].twinSegments || []);
 							for(let i = 0; i < bladeSegments.length; i++) {
 								if(!bladeSegments[i].render) continue;
 								ctx.beginPath();
@@ -121,17 +136,33 @@ javascript:(function() {
 			if(this.sword) {
 				this.cycle++;
 			}
-			this.chooseFireMethod();
-			this.fire();
-			if(tech.soundSword) {
-				this.renderSoundSword();
-			} else if(tech.longSword) {
-				this.renderLongsword();
-			} else {
-				this.renderDefault();
-			}
-			this.blades();
-			this.collision();
+            if (tech.zenithSword) {
+                this.updateZenith();
+            } else {
+                if (this.zenith.length) this.clearZenith();
+                this.chooseFireMethod();
+                this.fire();
+            }
+            this.updateTwin();
+            const render = () => {
+                if (tech.soundSword) {
+                    this.renderSoundSword();
+                } else if (tech.longSword) {
+                    this.renderLongsword();
+                } else {
+                    this.renderDefault();
+                }
+            };
+            render();
+            if (this.twinSword) {
+                this.swapTwin();
+                render();
+                this.swapTwin();
+            }
+            this.blades();
+            this.collision();
+            this.updateSatellites();
+            if (this.twinSword) this.collision(this.twinSword);
 			if (tech.durabilitySword) {
 				this.durability = Math.max(0, Math.min(this.maxDurability, this.durability));
 				for (let i = 0, len = b.inventory.length; i < len; ++i) {
@@ -1055,6 +1086,301 @@ javascript:(function() {
 				color.bullet = "black"
 			}
 		},
+        noSelfCollide(sword, group = -4242) {
+            sword.collisionFilter = Object.assign({}, sword.collisionFilter, { group });
+            sword.parts.forEach(p => {
+                p.collisionFilter = Object.assign({}, p.collisionFilter, { group });
+            });
+        },
+        swapTwin() {
+            [this.sword, this.twinSword] = [this.twinSword, this.sword];
+            [this.constraint, this.twinConstraint] = [this.twinConstraint, this.constraint];
+            [this.bladeSegments, this.twinSegments] = [this.twinSegments, this.bladeSegments];
+            [this.bladeTrails, this.twinTrails] = [this.twinTrails, this.bladeTrails];
+        },
+        removeTwin() {
+            if (this.twinSword) {
+                Composite.remove(engine.world, this.twinSword);
+                this.twinSword.parts.forEach(part => {
+                    Composite.remove(engine.world, part);
+                    const index = bullet.indexOf(part);
+                    if (index !== -1) bullet.splice(index, 1);
+                });
+                this.twinSword = undefined;
+            }
+            if (this.twinConstraint) {
+                Composite.remove(engine.world, this.twinConstraint);
+                this.twinConstraint = undefined;
+            }
+            this.twinSegments = undefined;
+            this.twinTrails = [];
+        },
+        updateTwin() {
+            if (!tech.zeemanEffect || tech.heavenlyArray || tech.isStabSword || !this.sword) {
+                this.removeTwin();
+                return;
+            }
+            const px = player.position.x, py = player.position.y;
+            if (!this.twinSword) {
+                if (tech.greatSword) {
+                    ({ sword: this.twinSword, bladeSegments: this.twinSegments } = this.greatSword());
+                } else if (tech.longSword) {
+                    ({ sword: this.twinSword, bladeSegments: this.twinSegments } = this.longSword());
+                } else {
+                    ({ sword: this.twinSword, bladeSegments: this.twinSegments } = this.createAndSwingSword(px, py, this.angle));
+                }
+                this.noSelfCollide(this.sword);
+                this.noSelfCollide(this.twinSword);
+                this.twinTrails = [];
+            }
+            const s = this.sword, t = this.twinSword;
+            Matter.Body.setAngle(t, s.angle + Math.PI);
+            Matter.Body.setPosition(t, { x: 2 * px - s.position.x, y: 2 * py - s.position.y });
+            Matter.Body.setVelocity(t, {
+                x: 2 * player.velocity.x - s.velocity.x,
+                y: 2 * player.velocity.y - s.velocity.y
+            });
+            Matter.Body.setAngularVelocity(t, s.angularVelocity);
+            if (input.fire && !tech.durabilitySword) {
+                if (tech.isEnergyHealth) {
+                    m.energy -= 0.004;
+                } else {
+                    m.health -= 0.001 * (input.down ? 0.5 : 1);
+                    m.displayHealth();
+                }
+            }
+        },
+        updateSatellites() {
+            const n = tech.satelliteSwords || 0;
+            if (n === 0) { this.satellites = []; return; }
+            const px = player.position.x, py = player.position.y;
+            const stale = simulation.cycle - this.satCycle > 5;
+            this.satCycle = simulation.cycle;
+            const mvx = (this.satPX === undefined || stale) ? 0 : px - this.satPX;
+            const mvy = (this.satPY === undefined || stale) ? 0 : py - this.satPY;
+            this.satPX = px;
+            this.satPY = py;
+            const bladeLen = 95;
+            const slashFrame = 10;
+            const standoff = (mb) => Math.min(bladeLen - 15, mb.radius + 40);
+            const isValid = (mb) => mb && mb.alive && !mb.isMobBullet && !mb.isShielded && !mb.isInvulnerable;
+            const wrap = (a) => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+            const segDist = (x, y, x1, y1, x2, y2) => {
+                const vx = x2 - x1, vy = y2 - y1;
+                let t = ((x - x1) * vx + (y - y1) * vy) / (vx * vx + vy * vy);
+                t = Math.max(0, Math.min(1, t));
+                return Math.hypot(x - (x1 + vx * t), y - (y1 + vy * t));
+            };
+            const pickSpot = (s) => {
+                const a = Math.random() * Math.PI * 2;
+                const r = 90 + Math.random() * 90;
+                s.ox = Math.cos(a) * r;
+                s.oy = Math.sin(a) * r * 0.7 - 20;
+                s.hold = 120 + Math.floor(Math.random() * 120);
+            };
+            const endRun = (s) => {
+                s.state = "idle";
+                s.target = null;
+                s.cd = 60 + Math.floor(Math.random() * 40);
+                pickSpot(s);
+            };
+
+            while (this.satellites.length < n) {
+                const s = { x: px, y: py, vx: 0, vy: 0, angle: -Math.PI / 2, state: "idle", target: null, cd: 30, trail: [], ox: 0, oy: 0, hold: 0,
+                    timer: 0, dir: 1, base: 0, slashT: 0, slashesDone: 0, hitSet: new Set(), arcA0: 0, arcA1: 0, fade: 0 };
+                pickSpot(s);
+                s.hold = 30 + Math.floor(Math.random() * 120); 
+                this.satellites.push(s);
+            }
+            this.satellites.length = n;
+            if (stale) {
+                this.satTurn = 0;
+                this.satAtkCD = 0;
+                this.satellites.forEach(s => {
+                    Object.assign(s, { x: px, y: py, vx: 0, vy: 0, state: "idle", target: null, cd: 30, fade: 0, trail: [] });
+                    pickSpot(s);
+                });
+            }
+            const frozen = this.technique.active && this.shouldSlow;
+
+            if (!frozen) {
+                this.satAtkCD--;
+                if (this.satAtkCD <= 0) {
+                    for (let k = 0; k < n; k++) {
+                        const idx = (this.satTurn + k) % n;
+                        const s = this.satellites[idx];
+                        if (s.state !== "idle" || s.cd > 0) continue;
+                        const claimed = new Set(this.satellites.filter(o => o.target).map(o => o.target));
+                        let best = null, bestD = 700 * 700, fallback = null, fallbackD = 700 * 700;
+                        for (let j = 0; j < mob.length; j++) {
+                            if (!isValid(mob[j])) continue;
+                            const dx = mob[j].position.x - px, dy = mob[j].position.y - py;
+                            const dd = dx * dx + dy * dy;
+                            if (dd < fallbackD) { fallbackD = dd; fallback = mob[j]; }
+                            if (!claimed.has(mob[j]) && dd < bestD) { bestD = dd; best = mob[j]; }
+                        }
+                        const pick = best || fallback;
+                        if (pick) {
+                            s.state = "approach";
+                            s.target = pick;
+                            s.timer = 60;
+                            s.slashesDone = 0;
+                            s.dir = Math.random() < 0.5 ? 1 : -1;
+                            this.satTurn = (idx + 1) % n;
+                            this.satAtkCD = 30;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            for (let i = 0; i < n; i++) {
+                const s = this.satellites[i];
+                if (!frozen) {
+                    s.cd--;
+                    if (s.state !== "idle" && s.state !== "slash" && !isValid(s.target)) endRun(s);
+
+                    if (s.state === "idle") {
+                        if (--s.hold <= 0) pickSpot(s);
+                        s.x += mvx;
+                        s.y += mvy;
+                        s.vx = s.vx * 0.75 + (px + s.ox - s.x) * 0.1;
+                        s.vy = s.vy * 0.75 + (py + s.oy - s.y) * 0.1;
+                        const want = Math.atan2(s.oy, s.ox);
+                        s.angle += wrap(want - s.angle) * 0.15;
+                    } else if (s.state === "approach") {
+                        const tx = s.target.position.x, ty = s.target.position.y;
+                        let ux = s.x - tx, uy = s.y - ty;
+                        const ud = Math.hypot(ux, uy) || 1;
+                        ux /= ud; uy /= ud;
+                        const st = standoff(s.target);
+                        const dx = tx + ux * st, dy = ty + uy * st;
+                        s.vx = s.vx * 0.78 + (dx - s.x) * 0.12;
+                        s.vy = s.vy * 0.78 + (dy - s.y) * 0.12;
+                        const sp = Math.hypot(s.vx, s.vy);
+                        if (sp > 30) { s.vx *= 30 / sp; s.vy *= 30 / sp; }
+                        const want = Math.atan2(ty - s.y, tx - s.x);
+                        s.angle += wrap(want - s.angle) * 0.3;
+                        if (Math.hypot(dx - s.x, dy - s.y) < 40 || --s.timer <= 0) {
+                            s.state = "windup";
+                            s.timer = 10;
+                            s.base = want;
+                        }
+                    } else if (s.state === "windup") {
+                        const tx = s.target.position.x, ty = s.target.position.y;
+                        s.base = Math.atan2(ty - s.y, tx - s.x);
+                        const stW = standoff(s.target);
+                        s.vx = s.vx * 0.6 + (tx - Math.cos(s.base) * stW - s.x) * 0.15;
+                        s.vy = s.vy * 0.6 + (ty - Math.sin(s.base) * stW - s.y) * 0.15;
+                        s.angle += wrap(s.base - s.dir * 1.3 - s.angle) * 0.4; // pull the blade back
+                        if (--s.timer <= 0) {
+                            s.state = "slash";
+                            s.slashT = 0;
+                            s.hitSet = new Set();
+                            s.arcA0 = s.angle;
+                            s.arcA1 = s.angle;
+                            s.tx = s.target.position.x;
+                            s.ty = s.target.position.y;
+                        }
+                    } else if (s.state === "slash") {
+                        if (isValid(s.target)) { s.tx = s.target.position.x; s.ty = s.target.position.y; }
+                        const tx = s.tx, ty = s.ty;
+                        s.base = Math.atan2(ty - s.y, tx - s.x);
+                        s.slashT++;
+                        const k = Math.min(1, s.slashT / slashFrame);
+                        const prev = s.angle;
+                        s.angle = s.base + s.dir * (-1.3 + 2.6 * k);
+                        s.arcA1 = s.angle;
+                        const stS = isValid(s.target) ? standoff(s.target) : (s.stand || 70);
+                        s.stand = stS;
+                        s.vx = s.vx * 0.6 + (tx - Math.cos(s.base) * stS - s.x) * 0.15;
+                        s.vy = s.vy * 0.6 + (ty - Math.sin(s.base) * stS - s.y) * 0.15;
+                        const dmg = (m.damageDone ? m.damageDone : m.dmgScale) * 5;
+                        const angs = [s.angle, (s.angle + prev) / 2];
+                        for (let j = 0; j < mob.length; j++) {
+                            const mb = mob[j];
+                            if (!isValid(mb) || s.hitSet.has(mb)) continue;
+                            for (const a of angs) {
+                                const x2 = s.x + Math.cos(a) * bladeLen, y2 = s.y + Math.sin(a) * bladeLen;
+                                if (segDist(mb.position.x, mb.position.y, s.x, s.y, x2, y2) < mb.radius + 8) {
+                                    s.hitSet.add(mb);
+                                    mb.damage(dmg, true);
+                                    simulation.drawList.push({
+                                        x: mb.position.x, y: mb.position.y,
+                                        radius: Math.abs(Math.log(dmg * 10) * 20 * mb.damageReduction + 3),
+                                        color: simulation.mobDmgColor,
+                                        time: simulation.drawTime
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                        if (s.slashT >= slashFrame) {
+                            s.slashesDone++;
+                            if (s.slashesDone >= 2 || !isValid(s.target)) {
+                                endRun(s);
+                            } else {
+                                s.dir = -s.dir;
+                                s.state = "windup";
+                                s.timer = 4;
+                            }
+                        }
+                    }
+                    s.fade = s.state === "slash" ? 1 : Math.max(0, s.fade - 0.12);
+                    s.x += s.vx;
+                    s.y += s.vy;
+                    if (s.state === "slash") {
+                        const ca = Math.cos(s.angle), sa = Math.sin(s.angle);
+                        s.trail.push({
+                            tip: { x: s.x + ca * bladeLen, y: s.y + sa * bladeLen },
+                            base: { x: s.x + ca * 20, y: s.y + sa * 20 }
+                        });
+                        if (s.trail.length > 15) s.trail.shift();
+                    } else if (s.trail.length) {
+                        s.trail.shift();
+                    }
+                }
+
+                const col = tech.isEnergyHealth ? m.fieldMeterColor : tech.durabilitySword ? "#c0c0c0" : "rgb(180, 0, 220)";
+                if (s.trail.length > 1) {
+                    const tr = s.trail;
+                    ctx.save();
+                    ctx.beginPath();
+                    const gradient = ctx.createLinearGradient(
+                        tr[0].tip.x, tr[0].tip.y,
+                        tr[tr.length - 1].tip.x, tr[tr.length - 1].tip.y
+                    );
+                    gradient.addColorStop(0, "rgba(180, 0, 220, 0)");
+                    gradient.addColorStop(1, "rgba(220, 220, 220, 1)");
+                    ctx.fillStyle = gradient;
+                    ctx.moveTo(tr[0].tip.x, tr[0].tip.y);
+                    for (let j = 1; j < tr.length; j++) ctx.lineTo(tr[j].tip.x, tr[j].tip.y);
+                    for (let j = tr.length - 1; j >= 0; j--) ctx.lineTo(tr[j].base.x, tr[j].base.y);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
+                ctx.save();
+                ctx.translate(s.x, s.y);
+                ctx.rotate(s.angle);
+                ctx.beginPath();
+                ctx.lineJoin = "miter";
+                ctx.moveTo(-24, -3); ctx.lineTo(0, -3); ctx.lineTo(0, -12); ctx.lineTo(5, -12);
+                ctx.lineTo(5, -6); ctx.lineTo(bladeLen - 14, -6); ctx.lineTo(bladeLen, 0);
+                ctx.lineTo(bladeLen - 14, 6); ctx.lineTo(5, 6); ctx.lineTo(5, 12);
+                ctx.lineTo(0, 12); ctx.lineTo(0, 3); ctx.lineTo(-24, 3);
+                ctx.closePath();
+                ctx.fillStyle = "black";
+                ctx.strokeStyle = col;
+                ctx.lineWidth = 6;
+                ctx.fill();
+                ctx.stroke();
+                ctx.strokeStyle = "white";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.restore();
+            }
+        },
 		breakSword() {
 			if (!this.sword || this.isBroken || this.isReforming) return;
 			this.isBroken = true;
@@ -1294,47 +1620,47 @@ javascript:(function() {
 				}
 			}
 		},
-		collision() {
-			if(this.sword) {
-				for (let i = 0; i < mob.length; i++) {
-					if (Matter.Query.collides(this.sword, [mob[i]]).length > 0) {
-						const dmg = (m.damageDone ? m.damageDone : m.dmgScale) * Math.sqrt(this.sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1) * (tech.infinityEdge ? 1.1 : 1) * (tech.greatSword ? 2 : 1) * (tech.longSword ? 1.7 : 1);
-						if(!tech.soundSword) {
-							if(m.health < m.maxHealth) {
-								if(tech.isEnergyHealth) {
-									m.energy += 0.04;
-								} else {
-									m.health += 0.01 * (dmg - mob[i].health);
-									m.displayHealth();
-								}
-							} else {
-								if(tech.isEnergyHealth) {
-									m.energy += 0.04;
-								} else {
-									m.health = m.maxHealth;
-									m.displayHealth();
-								}
-							}
-						}
-						mob[i].damage(dmg, true);
-						if (tech.durabilitySword) { this.durability--; }
-						simulation.drawList.push({
-							x: mob[i].position.x,
-							y: mob[i].position.y,
-							radius: Math.abs(Math.log(dmg * this.sword.speed) * 40 * mob[i].damageReduction + 3),
-							color: (tech.soundSword ? "rgba(0, 0, 0, 0.3)": simulation.mobDmgColor),
-							time: simulation.drawTime
-						});
-						if(!tech.soundSword && !tech.greatSword) {
-							const angle = Math.atan2(mob[i].position.y - this.sword.position.y, mob[i].position.x - this.sword.position.x);
-							this.sword.force.x -= Math.cos(angle) * 10;
-							this.sword.force.y -= Math.sin(angle) * 10;
-						}
-						break
-					}
-				}
-			}
-		},
+        collision(sword = this.sword) {
+            if(sword) {
+                for (let i = 0; i < mob.length; i++) {
+                    if (Matter.Query.collides(sword, [mob[i]]).length > 0) {
+                        const dmg = (m.damageDone ? m.damageDone : m.dmgScale) * Math.sqrt(sword.speed) * (tech.sizeIllusion ? 1.1 : 1) * (tech.isStabSword ? 1.5 : 1) * (tech.infinityEdge ? 1.1 : 1) * (tech.greatSword ? 2 : 1) * (tech.longSword ? 1.7 : 1);
+                        if(!tech.soundSword) {
+                            if(m.health < m.maxHealth) {
+                                if(tech.isEnergyHealth) {
+                                    m.energy += 0.04;
+                                } else {
+                                    m.health += 0.01 * (dmg - mob[i].health);
+                                    m.displayHealth();
+                                }
+                            } else {
+                                if(tech.isEnergyHealth) {
+                                    m.energy += 0.04;
+                                } else {
+                                    m.health = m.maxHealth;
+                                    m.displayHealth();
+                                }
+                            }
+                        }
+                        mob[i].damage(dmg, true);
+                        if (tech.durabilitySword) { this.durability--; }
+                        simulation.drawList.push({
+                            x: mob[i].position.x,
+                            y: mob[i].position.y,
+                            radius: Math.abs(Math.log(dmg * sword.speed) * 40 * mob[i].damageReduction + 3),
+                            color: (tech.soundSword ? "rgba(0, 0, 0, 0.3)": simulation.mobDmgColor),
+                            time: simulation.drawTime
+                        });
+                        if(!tech.soundSword && !tech.greatSword) {
+                            const angle = Math.atan2(mob[i].position.y - sword.position.y, mob[i].position.x - sword.position.x);
+                            sword.force.x -= Math.cos(angle) * 10;
+                            sword.force.y -= Math.sin(angle) * 10;
+                        }
+                        break
+                    }
+                }
+            }
+        },
 		slowDownTime(scale = 0.5, duration = 50) {
 			this.isSlowed = true;
 			const originalDelta = simulation.delta;
@@ -1780,6 +2106,184 @@ javascript:(function() {
 			this.technique.lastKill = simulation.cycle;
 			this.shouldSlow = false;
 		},
+        removeZenithBody(s) {
+            if (!s.body) return;
+            Composite.remove(engine.world, s.body);
+            s.body.parts.forEach(part => {
+                Composite.remove(engine.world, part);
+                const idx = bullet.indexOf(part);
+                if (idx !== -1) bullet.splice(idx, 1);
+            });
+            s.body = undefined;
+        },
+        clearZenith() {
+            this.zenith.forEach(s => this.removeZenithBody(s));
+            this.zenith = [];
+        },
+        updateZenith() {
+            const px = player.position.x, py = player.position.y;
+            const fly = 34, coast = 10;
+            const SCALE = tech.longSword ? 0.4 : (tech.greatSword ? 0.6 : 0.5);
+            const stale = simulation.cycle - this.zenCycle > 5; 
+            this.zenCycle = simulation.cycle;
+            if (stale) { this.clearZenith(); this.zenSpawnCD = 0; }
+            if (this.sword) {
+                Composite.remove(engine.world, this.sword);
+                this.sword.parts.forEach(part => {
+                    Composite.remove(engine.world, part);
+                    const idx = bullet.indexOf(part);
+                    if (idx !== -1) bullet.splice(idx, 1);
+                });
+                this.sword = undefined;
+                if (this.constraint) { Composite.remove(engine.world, this.constraint); this.constraint = undefined; }
+                this.bladeTrails = [];
+                this.bladeSegments = undefined;
+            }
+            const frozen = this.technique.active && this.shouldSlow; 
+            if (!frozen) {
+                this.zenSpawnCD--;
+                const canPay = tech.isEnergyHealth ? m.energy >= 0.11 : m.health >= 0.11;
+                if (input.fire && canPay && (!tech.durabilitySword || this.durability > 0)) {
+                    if (!tech.durabilitySword) {
+                        if (tech.isEnergyHealth) {
+                            m.energy -= 0.004;
+                        } else {
+                            m.health -= 0.001 * (input.down ? 0.5 : 1);
+                            m.displayHealth();
+                        }
+                    }
+                    if (this.zenSpawnCD <= 0 && this.zenith.length < 12) {
+                        let made;
+                        if (tech.greatSword) {
+                            made = this.greatSword();
+                        } else if (tech.longSword) {
+                            made = this.longSword();
+                        } else {
+                            made = this.createAndSwingSword(px, py, Math.random() < 0.5 ? 0 : Math.PI);
+                        }
+                        const body = made.sword;
+                        Matter.Body.scale(body, SCALE, SCALE, { x: body.position.x, y: body.position.y });
+                        this.noSelfCollide(body); 
+
+                        const a = Math.random() * Math.PI * 2;
+                        const ox = Math.cos(a) * 30, oy = Math.sin(a) * 30 - 10;
+                        const mx = simulation.mouseInGame.x, my = simulation.mouseInGame.y;
+                        const ang = Math.atan2(my - py, mx - px);
+                        Matter.Body.setPosition(body, { x: px + ox, y: py + oy });
+                        Matter.Body.setAngle(body, ang + Math.PI / 2); // blade points "up" in local space
+                        this.zenith.push({
+                            body: body, segs: made.bladeSegments,
+                            ox: ox, oy: oy,
+                            x: px + ox, y: py + oy, vx: 0, vy: 0,
+                            angle: ang,
+                            t: 0, coast: 0,
+                            th0: Math.random() * Math.PI * 2,
+                            turn: Math.random() < 0.5 ? 1 : -1,
+                            R: 110 + Math.random() * 90,
+                            hits: new Map(),
+                            trail: []
+                        });
+                        this.zenSpawnCD = 5;
+                        if (tech.durabilitySword) this.durability--;
+                    }
+                }
+            }
+            const col = tech.isEnergyHealth ? m.fieldMeterColor : tech.durabilitySword ? "#c0c0c0" : tech.longSword ? "rgb(200, 110, 240)" : "crimson";
+            for (let i = 0; i < this.zenith.length; i++) {
+                const s = this.zenith[i];
+                if (!frozen) {
+                    const prevX = s.x, prevY = s.y;
+                    if (s.t < 1) {
+                        s.t = Math.min(1, s.t + 1 / fly);
+                        const t = s.t;
+                        const e = 0.35 * t + 0.65 * t * t;
+                        const sx = px + s.ox, sy = py + s.oy;
+                        const tx = simulation.mouseInGame.x, ty = simulation.mouseInGame.y;
+                        const th = s.th0 + s.turn * 2 * Math.PI * t;
+                        const r = s.R * (1 - t);
+                        s.x = sx + (tx - sx) * e + r * (Math.cos(th) - Math.cos(s.th0));
+                        s.y = sy + (ty - sy) * e + r * (Math.sin(th) - Math.sin(s.th0));
+                        s.vx = s.x - prevX;
+                        s.vy = s.y - prevY;
+                    } else {
+                        s.coast++;
+                        s.vx *= 0.9;
+                        s.vy *= 0.9;
+                        s.x += s.vx;
+                        s.y += s.vy;
+                    }
+                    const sp = Math.hypot(s.vx, s.vy);
+                    if (sp > 0.5) s.angle = Math.atan2(s.vy, s.vx);
+                    Matter.Body.setPosition(s.body, { x: s.x, y: s.y });
+                    Matter.Body.setAngle(s.body, s.angle + Math.PI / 2);
+                    Matter.Body.setVelocity(s.body, { x: s.vx, y: s.vy });
+                    Matter.Body.setAngularVelocity(s.body, 0);
+                    if (sp > 3) {
+                        for (let j = 0; j < mob.length; j++) {
+                            const mb = mob[j];
+                            if (!mb.alive) continue;
+                            const last = s.hits.get(mb);
+                            if (last !== undefined && simulation.cycle - last < 15) continue;
+                            if (Matter.Query.collides(s.body, [mb]).length === 0) continue;
+                            const dmg = (m.damageDone ? m.damageDone : m.dmgScale) * Math.sqrt(sp) * 0.8 * (tech.greatSword ? 2 : 1) * (tech.longSword ? 1.7 : 1);
+                            if (!tech.soundSword) { // lifesteal, halved since many swords hit at once
+                                if (tech.isEnergyHealth) {
+                                    m.energy += 0.02;
+                                } else {
+                                    m.health = Math.min(m.maxHealth, m.health + 0.005 * (dmg - mb.health));
+                                    m.displayHealth();
+                                }
+                            }
+                            mb.damage(dmg, true);
+                            s.hits.set(mb, simulation.cycle);
+                            simulation.drawList.push({
+                                x: mb.position.x, y: mb.position.y,
+                                radius: Math.abs(Math.log(dmg * sp) * 40 * mb.damageReduction + 3),
+                                color: simulation.mobDmgColor,
+                                time: simulation.drawTime
+                            });
+                        }
+                    }
+                    s.trail.push({ x: s.x, y: s.y });
+                    if (s.trail.length > 12 || (s.coast > 0 && s.trail.length > 1)) s.trail.shift();
+                } else {
+                    Matter.Body.setVelocity(s.body, { x: 0, y: 0 });
+                }
+                const alpha = s.coast > 0 ? Math.max(0, 1 - s.coast / coast) : 1;
+                ctx.save();
+                ctx.lineCap = "round";
+                ctx.strokeStyle = col;
+                for (let k = 1; k < s.trail.length; k++) {
+                    const f = k / s.trail.length;
+                    ctx.globalAlpha = alpha * 0.5 * f;
+                    ctx.lineWidth = 1 + 9 * f;
+                    ctx.beginPath();
+                    ctx.moveTo(s.trail[k - 1].x, s.trail[k - 1].y);
+                    ctx.lineTo(s.trail[k].x, s.trail[k].y);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = alpha;
+                ctx.lineJoin = "miter";
+                ctx.miterLimit = 100;
+                ctx.lineWidth = 4;
+                ctx.fillStyle = "black";
+                for (let k = 0; k < s.segs.length; k++) {
+                    const v = s.segs[k].vertices;
+                    ctx.beginPath();
+                    ctx.moveTo(v[0].x, v[0].y);
+                    for (let j = 1; j < v.length; j++) ctx.lineTo(v[j].x, v[j].y);
+                    ctx.closePath();
+                    ctx.stroke();
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+            this.zenith = this.zenith.filter(s => {
+                if (s.coast <= coast) return true;
+                this.removeZenithBody(s);
+                return false;
+            });
+        },
 	};
 	b.guns.push(e);
 	const gunArray = b.guns.filter(
@@ -1799,7 +2303,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() {
-				return tech.haveGunCheck("sword") && !tech.isStabSword
+				return tech.haveGunCheck("sword") && !tech.isStabSword && !tech.zenithSword
 			},
 			requires: "sword",
 			effect() {
@@ -1820,7 +2324,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword") && !tech.sizeIllusion && !tech.infinityEdge & !tech.heavenlyArray
+				return tech.haveGunCheck("sword") && !tech.sizeIllusion && !tech.infinityEdge & !tech.heavenlyArray && !tech.zeemanEffect && !tech.zenithSword
 			},
 			requires: "sword, not cantor's theorem, not size-weight illusion, not dirac sea",
 			effect() {
@@ -1862,7 +2366,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword") && !tech.greatSword && !tech.longSword & !tech.heavenlyArray
+				return tech.haveGunCheck("sword") && !tech.greatSword && !tech.longSword & !tech.heavenlyArray && !tech.zenithSword
 			},
 			requires: "sword, not greatsword, not longsword, not dirac sea",
 			effect() {
@@ -1931,7 +2435,7 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() { 
-				return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword && !tech.longSword && !tech.isStabSword
+				return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword && !tech.longSword && !tech.isStabSword && !tech.zeemanEffect && !tech.zenithSword
 			},
 			requires: "sword, not plasmon, canton's theorem, not longsword, not silicon carbide",
 			effect() {
@@ -1988,6 +2492,69 @@ javascript:(function() {
 				tech.hartmanEffect = false;
 			}
 		},
+        {
+            name: "zeeman effect",
+            descriptionFunction() {
+                return `summon a <b>second sword</b> on the <b>opposite</b> side<br>sword drains <strong class="color-h">health</strong> <b>2x</b> faster`
+            },
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.heavenlyArray && !tech.isStabSword && !tech.zenithSword
+            },
+            requires: "sword, not cantor's theorem, not dirac sea, not silicon carbide",
+            effect() {
+                tech.zeemanEffect = true;
+            },
+            remove() {
+                tech.zeemanEffect = false;
+            }
+        },
+        {
+            name: "larmor precession",
+            descriptionFunction() {
+                return `<b>small swords</b> follow you and <b>slash</b> nearby <b>mobs</b>`
+            },
+            isGunTech: true,
+            maxCount: 3,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("sword") && tech.longSword
+            },
+            requires: "sword, longsword",
+            effect() {
+                tech.satelliteSwords = (tech.satelliteSwords || 0) + 1;
+            },
+            remove() {
+                tech.satelliteSwords = 0;
+            }
+        },
+        {
+            name: "euler spiral",
+            descriptionFunction() {
+                return `hold fire to launch <b>spiraling swords</b> at your cursor<br><b>0.4x</b> sword size`
+            },
+            isGunTech: true,
+            maxCount: 1,
+            count: 0,
+            frequency: 2,
+            frequencyDefault: 2,
+            allowed() {
+                return tech.haveGunCheck("sword") && !tech.infinityEdge && !tech.soundSword && !tech.heavenlyArray && !tech.isStabSword && !tech.sizeIllusion && !tech.zeemanEffect
+            },
+            requires: "sword, not cantor's theorem, not plasmon, not dirac sea, not silicon carbide, not size-weight illusion, not zeeman effect",
+            effect() {
+                tech.zenithSword = true;
+            },
+            remove() {
+                tech.zenithSword = false;
+            }
+        },
 	];
 	t.reverse();
 	for(let i = 0; i < tech.tech.length; i++) {
