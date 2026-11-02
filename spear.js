@@ -140,15 +140,15 @@ javascript:(function() {
 					if (distance < range) {
 						mob[i].damage(dmg);
 						mob[i].locatePlayer();
+						if (mob[i].alive) {
+							this.flagBurning(mob[i]);
+							if (tech.spearWildfire) mob[i].spearBurn = 120; // 2 seconds
+						}
 					}
 				}
 				if (this.oldSpear === undefined) {
 					this.oldSpear = { position: { x: 0, y: 0 } };
 				}
-				const t = 0.1;
-				let interpolateX = (1 - t) * this.oldSpear.position.x + t * this.spear.position.x;
-				let interpolateY = (1 - t) * this.oldSpear.position.y + t * this.spear.position.y;
-				this.drawPerlinWaveCircle(interpolateX, interpolateY, range);
 				this.oldSpear.position = this.spear.position;
 			}
 			if(tech.shockSpear) {
@@ -158,9 +158,11 @@ javascript:(function() {
 				}
 			} else if(tech.pyroSpear) {
 				this.renderFlame();
+				this.renderMobFlames();
 			} else {
 				this.renderDefault();
 			}
+			if(tech.spearWildfire) this.updateWildfire();
 			if(tech.spearArc && this.spear) {
 				const dmg = 0.0001 * (m.damageDone ? m.damageDone : m.dmgScale);
 				const arcList = [];
@@ -200,68 +202,6 @@ javascript:(function() {
 				}
 			}
         },
-		fade(t) {
-			return t * t * t * (t * (t * 6 - 15) + 10);
-		},
-		lerp(t, a, b) {
-			return a + t * (b - a);
-		},
-		grad(hash, x) {
-			const h = hash & 15; // Convert low 4 bits of hash code
-			const u = h < 8 ? x : 0; // Gradient value 1-8
-			const v = h < 4 ? 0 : (h === 12 || h === 14 ? x : 0); // Gradient value 9-12
-			return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v); // Return the final gradient
-		},
-		p: [],
-		perm: [],
-		setPerm() {
-			for (let i = 0; i < 256; i++) {
-				this.p[i] = Math.floor(Math.random() * 256);
-			}
-			for (let i = 0; i < 512; i++) {
-				this.perm[i] = p[i & 255];
-			}
-		},
-		noise(x) {
-			const X = Math.floor(x) & 255;
-			x -= Math.floor(x);
-			const u = this.fade(x);
-			return this.lerp(u, this.grad(this.perm[X], x), this.grad(this.perm[X + 1], x - 1));
-		},
-		drawPerlinWaveCircle(x, y, radius) {
-			if(this.perm == []) {
-				this.setPerm();
-			}
-			ctx.beginPath();
-			const points = 100;
-			const noiseScale = 0.9;
-			const timeFactor = simulation.cycle * 0.02;
-			for (let i = 0; i <= points; i++) {
-				const angle = (i / points) * 2 * Math.PI; 
-				
-				const noiseValue = this.noise(Math.cos(angle + timeFactor) * noiseScale - timeFactor);
-				
-				const r = radius + (radius * noiseValue * 0.5);
-				
-				const xPos = x + r * Math.cos(angle);
-				const yPos = y + r * Math.sin(angle);
-				
-				if (i === 0) {
-					ctx.moveTo(xPos, yPos);
-				} else {
-					ctx.lineTo(xPos, yPos);
-				}
-			}
-			const grd = ctx.createRadialGradient(x, y, 300, x, y, 1000);
-			grd.addColorStop(0, `rgba(255, 69, ${Math.abs(Math.sin(simulation.cycle / 30)) * 255}, 0.8)`);
-			grd.addColorStop(1, "transparent");
-			ctx.closePath();
-			ctx.strokeStyle = `rgba(255, 69, ${Math.abs(Math.sin(simulation.cycle / 30)) * 255}, 0.8)`;
-			ctx.fillStyle = grd;
-			ctx.lineWidth = 2; // Line width
-			ctx.stroke();
-			ctx.fill();
-		},
 		createSpear(position) {
 			let x = position.x;
 			let y = position.y;
@@ -484,81 +424,202 @@ javascript:(function() {
 				}
 			}
 		},
+		flameParticles: [],
+		prevVerts: [],
+		burningMobs: [],
+		mobFlames: [],
 		renderFlame() {
-			if (this.spear) {
-				for (let i = 0; i < this.bladeSegments.length; i++) {
-					const blade = this.bladeSegments[i];
-					const trail = this.bladeTrails[i] || [];
-					const vertices = blade.vertices.map(vertex => ({ x: vertex.x, y: vertex.y }));
-					trail.push(vertices);
-					if (trail.length > 10) {
-						trail.shift();
-					}
-					this.bladeTrails[i] = trail;
+			if (!this.spear) { this.flameParticles.length = 0; this.prevVerts = []; return; }
+			const segs = this.bladeSegments;
+			const sv = this.spear.velocity;
+			ctx.save();
+			ctx.lineJoin = "miter";
+			ctx.miterLimit = 100;
+			ctx.shadowColor = "rgba(255, 120, 0, 0.9)";
+			ctx.shadowBlur = 25;
+			for (let i = 0; i < segs.length; i++) {
+				const v = segs[i].vertices;
+				ctx.beginPath();
+				ctx.moveTo(v[0].x, v[0].y);
+				for (let j = 1; j < v.length; j++) ctx.lineTo(v[j].x, v[j].y);
+				ctx.closePath();
+				ctx.fillStyle = "#2a0600";
+				ctx.strokeStyle = `rgb(255, ${120 + Math.floor(Math.random() * 80)}, 30)`;
+				ctx.lineWidth = 4;
+				ctx.fill();
+				ctx.stroke();
+			}
+			ctx.restore();
+			for (let i = 0; i < segs.length; i++) {
+				const cur = segs[i].vertices;
+				const prev = this.prevVerts[i] || cur;
+				for (let n = 0; n < 4; n++) {
+					if (this.flameParticles.length > 900) break;
+					const a = Math.floor(Math.random() * cur.length);
+					const b = (a + 1) % cur.length;
+					const t = Math.random();
+					const s = Math.random();
+					const cx = cur[a].x + (cur[b].x - cur[a].x) * t;
+					const cy = cur[a].y + (cur[b].y - cur[a].y) * t;
+					const pa = prev[a] || cur[a], pb = prev[b] || cur[b];
+					const px = pa.x + (pb.x - pa.x) * t;
+					const py = pa.y + (pb.y - pa.y) * t;
+					const life = 25 + Math.random() * 25;
+					this.flameParticles.push({
+						x: px + (cx - px) * s,
+						y: py + (cy - py) * s,
+						vx: sv.x * 0.5 + (Math.random() - 0.5) * 1.2,
+						vy: sv.y * 0.5 - (1 + Math.random() * 2),
+						life: life,
+						maxLife: life,
+						size: 9 + Math.random() * 12,
+						seed: Math.random() * 1000
+					});
 				}
-
-				for (let i = 0; i < this.bladeTrails.length; i++) {
-					const trail = this.bladeTrails[i];
-					const alphaStep = 1 / trail.length;
-					let alpha = 0;
-
-					for (let j = 0; j < trail.length; j++) {
-						const vertices = trail[j];
+				this.prevVerts[i] = cur.map(v => ({ x: v.x, y: v.y }));
+			}
+			for (let i = this.flameParticles.length - 1; i >= 0; i--) {
+				const p = this.flameParticles[i];
+				p.life--;
+				if (p.life <= 0) { this.flameParticles.splice(i, 1); continue; }
+				p.vy -= 0.05;
+				p.vx += Math.sin(simulation.cycle * 0.15 + p.seed) * 0.12;
+				p.vx *= 0.97; p.vy *= 0.97;
+				p.x += p.vx;
+				p.y += p.vy;
+			}
+			ctx.save();
+			ctx.globalCompositeOperation = "lighter";
+			ctx.lineCap = "round";
+			for (const p of this.flameParticles) {
+				const t = p.life / p.maxLife;
+				if (t < 0.2) continue;
+				const r = p.size * (0.3 + 0.7 * t);
+				const g = Math.floor(60 + 180 * t);
+				const bl = t > 0.7 ? Math.floor(200 * (t - 0.7) / 0.3) : 0;
+				ctx.strokeStyle = `rgba(255, ${g}, ${bl}, ${0.3 * t + 0.05})`;
+				ctx.lineWidth = r * 2;
+				ctx.beginPath();
+				ctx.moveTo(p.x - p.vx * 5, p.y - p.vy * 5);
+				ctx.lineTo(p.x, p.y);
+				ctx.stroke();
+			}
+			ctx.restore();
+			for (const p of this.flameParticles) {
+				const t = p.life / p.maxLife;
+				if (t >= 0.2) continue;
+				ctx.fillStyle = `rgba(40, 40, 40, ${0.18 * (t / 0.2)})`;
+				ctx.beginPath();
+				ctx.arc(p.x, p.y, p.size * (1.2 - t), 0, 2 * Math.PI);
+				ctx.fill();
+			}
+		},
+		renderMobFlames() {
+			for (const mb of this.burningMobs) {
+				const count = Math.max(2, Math.min(8, Math.floor(mb.radius / 12)));
+				for (let n = 0; n < count; n++) {
+					if (this.mobFlames.length > 600) break;
+					const ang = Math.random() * 2 * Math.PI;
+					const dist = mb.radius * (0.3 + 0.7 * Math.random());
+					const life = 20 + Math.random() * 20;
+					this.mobFlames.push({
+						mob: mb,
+						ox: Math.cos(ang) * dist,
+						oy: Math.sin(ang) * dist,
+						vx: (Math.random() - 0.5) * 1.2,
+						vy: -(0.8 + Math.random() * 1.8),
+						life: life,
+						maxLife: life,
+						size: Math.max(5, Math.min(22, mb.radius * 0.3)) * (0.7 + 0.6 * Math.random()),
+						seed: Math.random() * 1000,
+						lx: mb.position.x, ly: mb.position.y
+					});
+				}
+			}
+			this.burningMobs = [];
+			for (let i = this.mobFlames.length - 1; i >= 0; i--) {
+				const p = this.mobFlames[i];
+				p.life -= p.mob.alive ? 1 : 3;
+				if (p.life <= 0) { this.mobFlames.splice(i, 1); continue; }
+				if (p.mob.alive) { p.lx = p.mob.position.x; p.ly = p.mob.position.y; }
+				p.vy -= 0.04;
+				p.vx += Math.sin(simulation.cycle * 0.15 + p.seed) * 0.08;
+				p.vx *= 0.96; p.vy *= 0.96;
+				p.ox += p.vx;
+				p.oy += p.vy;
+			}
+			if (this.mobFlames.length === 0) return;
+			ctx.save();
+			ctx.globalCompositeOperation = "lighter";
+			const tinted = new Set();
+			for (const p of this.mobFlames) {
+				if (!p.mob.alive || tinted.has(p.mob)) continue;
+				tinted.add(p.mob);
+				ctx.fillStyle = "rgba(255, 90, 10, 0.12)";
+				ctx.beginPath();
+				ctx.arc(p.mob.position.x, p.mob.position.y, p.mob.radius * 1.1, 0, 2 * Math.PI);
+				ctx.fill();
+			}
+			ctx.lineCap = "round";
+			for (const p of this.mobFlames) {
+				const t = p.life / p.maxLife;
+				if (t < 0.2) continue;
+				const x = p.lx + p.ox, y = p.ly + p.oy;
+				const r = p.size * (0.3 + 0.7 * t);
+				const g = Math.floor(60 + 180 * t);
+				const bl = t > 0.7 ? Math.floor(200 * (t - 0.7) / 0.3) : 0;
+				ctx.strokeStyle = `rgba(255, ${g}, ${bl}, ${0.3 * t + 0.05})`;
+				ctx.lineWidth = r * 2;
+				ctx.beginPath();
+				ctx.moveTo(x - p.vx * 4, y - p.vy * 4);
+				ctx.lineTo(x, y);
+				ctx.stroke();
+			}
+			ctx.restore();
+			for (const p of this.mobFlames) {
+				const t = p.life / p.maxLife;
+				if (t >= 0.2) continue;
+				ctx.fillStyle = `rgba(40, 40, 40, ${0.15 * (t / 0.2)})`;
+				ctx.beginPath();
+				ctx.arc(p.lx + p.ox, p.ly + p.oy, p.size * (1.2 - t), 0, 2 * Math.PI);
+				ctx.fill();
+			}
+		},
+		flagBurning(mb) {
+			if (mb.spearFlameCycle !== simulation.cycle) {
+				mb.spearFlameCycle = simulation.cycle;
+				this.burningMobs.push(mb);
+			}
+		},
+		updateWildfire() {
+			const dmg = 0.015 * (m.damageDone ? m.damageDone : m.dmgScale);
+			const spread = 120 + 60 * tech.spearWildfire;
+			const checkNow = simulation.cycle % 8 === 0;
+			for (let i = 0; i < mob.length; i++) {
+				const a = mob[i];
+				if (!a.alive || a.isMobBullet) continue;
+				if (a.spearImmune > 0) a.spearImmune--;
+				if (!(a.spearBurn > 0)) continue;
+				a.spearBurn--;
+				if (a.spearBurn === 0) a.spearImmune = 240;
+				a.damage(dmg);
+				if (!a.alive) continue;
+				this.flagBurning(a);
+				if (!checkNow) continue;
+				for (let j = 0; j < mob.length; j++) {
+					const b = mob[j];
+					if (b === a || !b.alive || b.isMobBullet || b.isInvulnerable) continue;
+					if (b.spearBurn > 0 || b.spearImmune > 0) continue;
+					const d = Vector.magnitude(Vector.sub(a.position, b.position));
+					if (d < spread + a.radius + b.radius && Math.random() < 0.5) {
+						b.spearBurn = 120;
 						ctx.beginPath();
-						const offx = Math.sin((j) * 0.3 * Math.abs(Math.sin(simulation.cycle / 1000)) + simulation.cycle * 0.08) * 25;
-						const offy = Math.sin((j) * 0.5 * Math.abs(Math.sin(simulation.cycle / 1000)) + simulation.cycle * 0.08) * 25;
-						ctx.moveTo(vertices[0].x + offx, vertices[0].y + offy);
-						for (let k = 1; k < vertices.length; k++) {
-							const offsetX = Math.sin((j + k) * 0.3 * Math.abs(Math.sin(simulation.cycle / 1000)) + simulation.cycle * 0.08) * 25;
-							const offsetY = Math.sin((j + k) * 0.5 * Math.abs(Math.sin(simulation.cycle / 1000)) + simulation.cycle * 0.08) * 25;
-							ctx.lineTo(vertices[k].x + offsetX, vertices[k].y + offsetY);
-						}
-
-						alpha += alphaStep;
-						ctx.closePath();
-
-						ctx.fillStyle = `rgba(${255 + j * 10}, ${90 + j * 5}, ${75 + j * 15}, ${alpha})`;
-						ctx.fill();
+						ctx.moveTo(a.position.x, a.position.y);
+						ctx.lineTo(b.position.x, b.position.y);
+						ctx.strokeStyle = "rgba(255, 140, 20, 0.8)";
+						ctx.lineWidth = 3;
+						ctx.stroke();
 					}
-				}
-				const gradient = ctx.createRadialGradient(
-					this.bladeSegments[0].vertices[0].x, 
-					this.bladeSegments[0].vertices[0].y, 
-					0,
-					this.bladeSegments[0].vertices[0].x, 
-					this.bladeSegments[0].vertices[0].y, 
-					Math.abs(Math.sin(simulation.cycle / 30)) * 1000
-				);
-				for (let i = 0; i < this.bladeSegments.length; i++) {
-					ctx.save()
-					ctx.beginPath();
-					ctx.lineJoin = "miter";
-					ctx.miterLimit = 100;
-					ctx.globalCompositeOperation = "overlay";
-					ctx.filter = "blur(3px)"
-
-					gradient.addColorStop(0, `rgba(255, 69, ${Math.abs(Math.sin(simulation.cycle / 30)) * 255}, 0.8)`); // Inner color
-					// gradient.addColorStop(0.5, `rgba(255, 255, 255, 0.4)`);
-					gradient.addColorStop(1, `rgba(255, 0, 0, 0.4)`); // Outer color (can adjust this as needed)
-
-					// ctx.strokeStyle = gradient;
-					ctx.lineWidth = 5;
-
-					ctx.moveTo(this.bladeSegments[i].vertices[0].x, this.bladeSegments[i].vertices[0].y);
-
-					for (let j = 1; j < this.bladeSegments[i].vertices.length; j++) {
-						ctx.lineTo(this.bladeSegments[i].vertices[j].x, this.bladeSegments[i].vertices[j].y);
-					}
-
-					ctx.closePath();
-					
-					ctx.fillStyle = gradient;
-					ctx.fill();
-					// ctx.stroke();
-
-					ctx.lineJoin = "round";
-					ctx.miterLimit = 10;
-					ctx.restore();
 				}
 			}
 		},
@@ -721,9 +782,9 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() {
-				return tech.haveGunCheck("spear") && !tech.spearEye
+				return tech.haveGunCheck("spear") && !tech.spearEye && !tech.pyroSpear
 			},
-			requires: "spear, not blood transfusion",
+			requires: "spear, not blood transfusion, pyroflux",
 			effect() {
 				tech.shockSpear = true;
 			},
@@ -744,7 +805,7 @@ javascript:(function() {
 			allowed() {
 				return tech.haveGunCheck("spear") && tech.shockSpear
 			},
-			requires: "spear",
+			requires: "spear, dry lightning",
 			effect() {
 				tech.spearArc = this.count;
 			},
@@ -1033,9 +1094,9 @@ javascript:(function() {
 			frequency: 2,
 			frequencyDefault: 2,
 			allowed() {
-				return tech.haveGunCheck("spear") && !tech.isEnergyHealth && !tech.shockSpear
+				return tech.haveGunCheck("spear") && !tech.isEnergyHealth && !tech.shockSpear && !tech.pyroSpear
 			},
-			requires: "spear, not mass energy or dry lightning",
+			requires: "spear, not mass energy, dry lightning, pyroflux",
 			effect() {
 				tech.spearEye = true;
 				simulation.ephemera.push({
@@ -1145,6 +1206,27 @@ javascript:(function() {
 			},
 			remove() {
 				tech.pyroSpear = false;
+			}
+		},
+		{
+			name: "flashover",
+			descriptionFunction() {
+				return `burning mobs <b>ignite</b> nearby mobs<br>mobs <b>burn</b> for 2 seconds after contact`
+			},
+			isGunTech: true,
+			maxCount: 3,
+			count: 0,
+			frequency: 2,
+			frequencyDefault: 2,
+			allowed() {
+				return tech.haveGunCheck("spear") && tech.pyroSpear
+			},
+			requires: "spear, pyroflux",
+			effect() {
+				tech.spearWildfire = (tech.spearWildfire || 0) + 1;
+			},
+			remove() {
+				tech.spearWildfire = 0;
 			}
 		},
 	];
